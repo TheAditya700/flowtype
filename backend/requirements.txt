@@ -1,0 +1,17 @@
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+sqlalchemy
+psycopg2-binary
+alembic
+
+# ML dependencies
+sentence-transformers
+faiss-cpu
+numpy
+scikit-learn
+
+# Utilities
+python-dotenv
+python-multipart
