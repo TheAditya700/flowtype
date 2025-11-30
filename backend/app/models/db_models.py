@@ -57,3 +57,14 @@ class SnippetUsage(Base):
     user_accuracy = Column(Float)
     snippet_position = Column(Integer)
     difficulty_snapshot = Column(Float)
+
+
+class TelemetrySnippetRaw(Base):
+    __tablename__ = "telemetry_snippet_raw"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    received_at = Column(DateTime, default=func.now())
+    # store the full raw payload for later processing
+    payload = Column(JSON, nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    session_id = Column(UUID(as_uuid=True), ForeignKey("typing_sessions.id"), nullable=True)
+    source = Column(String, nullable=True)

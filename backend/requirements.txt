@@ -11,7 +11,12 @@ sentence-transformers
 faiss-cpu
 numpy
 scikit-learn
+lightgbm
+pandas
 
 # Utilities
 python-dotenv
 python-multipart
+redis
+rq
+

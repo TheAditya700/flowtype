@@ -1,94 +1,74 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from app.database import SessionLocal
-from app.models.schema import SnippetLog, UserState
-from sqlalchemy import text
-import uuid
+from fastapi import APIRouter, HTTPException, Request
 import logging
+import os
+import redis
+from rq import Queue
+from app.tasks.telemetry_tasks import process_telemetry
+from app.database import SessionLocal
+from app.models.db_models import TelemetrySnippetRaw
+import uuid
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+def get_redis_queue():
+    redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+    r = redis.from_url(redis_url)
+    return Queue('telemetry', connection=r)
 
 
 @router.post("/snippet")
-async def receive_snippet_telemetry(payload: dict, db: Session = Depends(get_db)):
+async def receive_snippet_telemetry(payload: dict, request: Request):
     """Accept per-snippet telemetry for online tuning and offline training.
 
-    Payload shape:
-    {
-      "snippet": { ... SnippetLog ... },
-      "user_state": { ... optional UserState ... }
-    }
+    Hybrid approach:
+    - Persist a minimal raw record synchronously into `telemetry_snippet_raw` for durability.
+    - Best-effort enqueue the payload to Redis/RQ for background enrichment/processing.
     """
     try:
         snippet = payload.get('snippet')
-        user_state = payload.get('user_state')
-
-        # Defensive: check required fields
         if not snippet or 'snippet_id' not in snippet:
             raise HTTPException(status_code=400, detail='Missing snippet payload')
 
-        # Insert into snippet_usage table using available columns
-        col_info = db.execute(text("PRAGMA table_info('snippet_usage')")).fetchall()
-        existing_cols = {row[1] for row in col_info}
+        source = request.client.host if request.client else None
 
-        insert_cols = []
-        insert_vals = {}
-        if 'id' in existing_cols:
-            insert_cols.append('id')
-            insert_vals['id'] = uuid.uuid4().hex
-        if 'session_id' in existing_cols:
-            # no session id here
-            insert_cols.append('session_id')
-            insert_vals['session_id'] = None
-        if 'user_id' in existing_cols:
-            insert_cols.append('user_id')
-            insert_vals['user_id'] = None
-        if 'snippet_id' in existing_cols:
-            insert_cols.append('snippet_id')
-            insert_vals['snippet_id'] = snippet.get('snippet_id')
-        if 'started_at' in existing_cols:
-            insert_cols.append('started_at')
-            insert_vals['started_at'] = snippet.get('started_at')
-        if 'completed_at' in existing_cols:
-            insert_cols.append('completed_at')
-            insert_vals['completed_at'] = snippet.get('completed_at')
-        if 'presented_at' in existing_cols and 'started_at' not in existing_cols:
-            insert_cols.append('presented_at')
-            insert_vals['presented_at'] = snippet.get('started_at')
-        if 'user_wpm' in existing_cols:
-            insert_cols.append('user_wpm')
-            insert_vals['user_wpm'] = snippet.get('wpm')
-        if 'user_accuracy' in existing_cols:
-            insert_cols.append('user_accuracy')
-            insert_vals['user_accuracy'] = snippet.get('accuracy')
-        if 'snippet_position' in existing_cols:
-            insert_cols.append('snippet_position')
-            insert_vals['snippet_position'] = snippet.get('position', 0)
-        if 'difficulty_snapshot' in existing_cols:
-            insert_cols.append('difficulty_snapshot')
-            insert_vals['difficulty_snapshot'] = snippet.get('difficulty')
-
-        if insert_cols:
-            cols_sql = ", ".join(insert_cols)
-            vals_sql = ", ".join(f":{c}" for c in insert_cols)
-            sql = text(f"INSERT INTO snippet_usage ({cols_sql}) VALUES ({vals_sql})")
-            db.execute(sql, insert_vals)
+        # Synchronously persist a minimal raw record for durability (hybrid approach)
+        db = SessionLocal()
+        try:
+            raw = TelemetrySnippetRaw(
+                id=uuid.uuid4(),
+                payload=payload,
+                user_id=(payload.get('user_state') or {}).get('user_id'),
+                session_id=(payload.get('snippet') or {}).get('session_id'),
+                source=source,
+            )
+            db.add(raw)
             db.commit()
+            raw_id = str(raw.id)
+            logger.info('Persisted raw telemetry id=%s', raw_id)
+        except Exception:
+            db.rollback()
+            logger.exception('Failed to persist raw telemetry synchronously')
+            raise HTTPException(status_code=500, detail='Failed to persist telemetry')
+        finally:
+            db.close()
 
-        # Optionally, we could also enqueue the telemetry for async processing
-        logger.info(f"Received telemetry for snippet {snippet.get('snippet_id')}")
-        return {"status": "ok"}
+        # Try to enqueue for background enrichment; if Redis is unavailable, return ok
+        enqueued = False
+        job_id = None
+        try:
+            q = get_redis_queue()
+            job = q.enqueue(process_telemetry, payload, source)
+            enqueued = True
+            job_id = job.id
+            logger.info('Enqueued telemetry job %s for snippet %s', job.id, snippet.get('snippet_id'))
+        except Exception:
+            logger.exception('Redis enqueue failed; continuing without enqueue')
+
+        return {"status": "ok", "raw_id": raw_id, "enqueued": enqueued, "job_id": job_id}
     except HTTPException:
         raise
-    except Exception as e:
-        logger.exception('Failed to process telemetry')
-        raise HTTPException(status_code=500, detail='Failed to process telemetry')
+    except Exception:
+        logger.exception('Failed to handle telemetry request')
+        raise HTTPException(status_code=500, detail='Failed to handle telemetry')
