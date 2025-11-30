@@ -1,23 +1,27 @@
 import React, { useState, useEffect, useRef } from 'react';
 import WordDisplay from './WordDisplay';
 import useTypingSession from '../hooks/useTypingSession';
-import useKeystrokeTracking from '../hooks/useKeystrokeTracking';
 import useWPMCalculation from '../hooks/useWPMCalculation';
-import { KeystrokeEvent, TypingSession } from '../types';
+import { TypingSession } from '../types';
 
-interface TypingZoneProps {
-  words: string[];
-  onSessionComplete: (session: TypingSession) => void;
+interface SnippetItem {
+  id: string;
+  words: string;
+  difficulty: number;
 }
 
-const TypingZone: React.FC<TypingZoneProps> = ({ words, onSessionComplete }) => {
-  const [inputValue, setInputValue] = useState<string>('');
-  const [currentWordIndex, setCurrentWordIndex] = useState<number>(0);
-  const [charIndex, setCharIndex] = useState<number>(0);
-  const [errors, setErrors] = useState<number>(0);
-  const [sessionStarted, setSessionStarted] = useState<boolean>(false);
-  const [sessionEnded, setSessionEnded] = useState<boolean>(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+interface TypingZoneProps {
+  snippets: SnippetItem[];
+  onSnippetComplete: (session: TypingSession) => void;
+}
+
+const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete }) => {
+  const [wordIndex, setWordIndex] = useState(0);
+  const [charIndex, setCharIndex] = useState(0);
+  const [typed, setTyped] = useState('');
+  const [errors, setErrors] = useState(0);
+  const [sessionStarted, setSessionStarted] = useState(false);
+  const containerRef = useRef<HTMLInputElement>(null);
 
   const {
     sessionStartTime,
@@ -30,131 +34,149 @@ const TypingZone: React.FC<TypingZoneProps> = ({ words, onSessionComplete }) => 
 
   const { wpm, accuracy } = useWPMCalculation(keystrokeEvents, sessionDuration);
 
+  // Always use the first snippet (current) and second snippet (next preview)
+  const currentSnippet = snippets[0];
+  const nextSnippet = snippets[1];
+  const words = currentSnippet?.words.split(/\s+/) || [];
+
+  // Key handler for typing
   useEffect(() => {
-    if (inputRef.current) {
-      inputRef.current.focus();
-    }
-  }, [sessionStarted]);
+    const el = containerRef.current;
+    if (!el || !currentSnippet) return;
+    el.focus();
 
-  useEffect(() => {
-    if (sessionEnded) {
-      const completedSession: TypingSession = {
-        startedAt: new Date(sessionStartTime!),
-        durationSeconds: sessionDuration,
-        wordsTyped: words.length,
-        errors: errors,
-        wpm: wpm,
-        accuracy: accuracy / 100, // Convert to 0-1 range
-        difficultyLevel: 5, // Placeholder, will be dynamic
-        keystrokeData: keystrokeEvents,
-      };
-      onSessionComplete(completedSession);
-      resetSession();
-    }
-  }, [sessionEnded]);
+    const onKey = (e: KeyboardEvent) => {
+      if (!currentSnippet) return;
 
-  const resetSession = () => {
-    setInputValue('');
-    setCurrentWordIndex(0);
-    setCharIndex(0);
-    setErrors(0);
-    setSessionStarted(false);
-    setSessionEnded(false);
-  };
-
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (words.length === 0) {
-      return;
-    }
-
-    if (!sessionStarted && words.length > 0) {
-      startSession();
-      setSessionStarted(true);
-    }
-
-    const typedChar = event.key;
-    const currentWord = words[currentWordIndex];
-    const expectedChar = currentWord ? currentWord[charIndex] : '';
-
-    let isCorrect = false;
-    let isBackspace = false;
-
-    if (typedChar === 'Backspace') {
-      isBackspace = true;
-      if (charIndex > 0) {
-        setCharIndex(prev => prev - 1);
-      } else if (currentWordIndex > 0) {
-        setCurrentWordIndex(prev => prev - 1);
-        setInputValue(words[currentWordIndex - 1] + ' ');
-        setCharIndex(words[currentWordIndex - 1].length);
-      }
-    } else if (typedChar.length === 1) { // Only process single character inputs
-      if (typedChar === expectedChar) {
-        isCorrect = true;
-        setCharIndex(prev => prev + 1);
-      } else {
-        setErrors(prev => prev + 1);
+      if (!sessionStarted) {
+        startSession();
+        setSessionStarted(true);
       }
 
-      if (charIndex + 1 > currentWord.length) { // Word completed
-        if (typedChar === ' ') {
-          setCurrentWordIndex(prev => prev + 1);
-          setCharIndex(0);
-          setInputValue('');
-        } else {
-          // Handle extra characters typed after word completion
-          setErrors(prev => prev + 1);
+      // Backspace
+      if (e.key === 'Backspace') {
+        e.preventDefault();
+        if (typed.length > 0) {
+          const newTyped = typed.slice(0, -1);
+          setTyped(newTyped);
+          setCharIndex(Math.max(0, charIndex - 1));
+          addKeystrokeEvent({ timestamp: Date.now(), key: 'Backspace', isBackspace: true, isCorrect: false });
         }
+        return;
       }
-    }
 
-    addKeystrokeEvent({
-      timestamp: Date.now(),
-      key: typedChar,
-      isBackspace: isBackspace,
-      isCorrect: isCorrect,
-    });
+      // Space -> submit current word
+      if (e.key === ' ') {
+        e.preventDefault();
+        const currentWord = words[wordIndex] || '';
+        const typedTrim = typed.trim();
+        const correct = typedTrim === currentWord;
 
-    // Check if session is complete
-    if (currentWordIndex === words.length - 1 && charIndex === currentWord.length && typedChar === ' ') {
-      endSession();
-      setSessionEnded(true);
-    }
-  };
+        if (!correct) {
+          setErrors(prev => prev + Math.max(1, Math.abs(typedTrim.length - currentWord.length)));
+        }
 
-  const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setInputValue(event.target.value);
-  };
+        addKeystrokeEvent({ timestamp: Date.now(), key: ' ', isBackspace: false, isCorrect: correct });
+
+        // If last word of snippet, complete snippet
+        if (wordIndex === words.length - 1) {
+          endSession();
+          const completedSession: TypingSession = {
+            startedAt: new Date(sessionStartTime!),
+            durationSeconds: sessionDuration,
+            wordsTyped: words.length,
+            errors,
+            wpm,
+            accuracy: accuracy / 100,
+            difficultyLevel: currentSnippet.difficulty,
+            keystrokeData: keystrokeEvents,
+          };
+          onSnippetComplete(completedSession);
+
+          // Reset for next snippet (parent will remove current and shift queue)
+          // The new currentSnippet (from snippets[1]) will become snippets[0]
+          setWordIndex(0);
+          setTyped('');
+          setCharIndex(0);
+          setErrors(0);
+          setSessionStarted(false);
+          return;
+        }
+
+        // advance to next word within snippet
+        setWordIndex(i => i + 1);
+        setTyped('');
+        setCharIndex(0);
+        return;
+      }
+
+      // Ignore non-printable keys
+      if (e.key.length !== 1) return;
+
+      // Normal character
+      e.preventDefault();
+      const newTyped = typed + e.key;
+      setTyped(newTyped);
+      setCharIndex(i => i + 1);
+
+      const expectedChar = (words[wordIndex] || '')[charIndex] || '';
+      const isCorrect = e.key === expectedChar;
+      addKeystrokeEvent({ timestamp: Date.now(), key: e.key, isBackspace: false, isCorrect });
+    };
+
+    el.addEventListener('keydown', onKey as any);
+    return () => el.removeEventListener('keydown', onKey as any);
+  }, [typed, charIndex, wordIndex, words, sessionStarted, currentSnippet, startSession, endSession, addKeystrokeEvent, keystrokeEvents, sessionDuration, wpm, accuracy, errors, onSnippetComplete]);
+
+  if (!currentSnippet) {
+    return <p className="text-center text-gray-400">Loading...</p>;
+  }
 
   return (
-    <div className="typing-zone p-4 bg-gray-700 rounded-lg">
-      <WordDisplay
-        words={words}
-        currentWordIndex={currentWordIndex}
-        charIndex={charIndex}
-        inputValue={inputValue}
-      />
+    <div className="typing-zone relative">
+      {/* Display current snippet and next preview */}
+      <div className="space-y-4 overflow-hidden">
+        {currentSnippet && (
+          <div className="p-4 rounded-lg bg-gray-700 border-2 border-blue-500">
+            <WordDisplay
+              words={words}
+              currentWordIndex={wordIndex}
+              charIndex={charIndex}
+              inputValue={typed}
+            />
+          </div>
+        )}
+        {nextSnippet && (
+          <div className="p-4 rounded-lg bg-gray-800 opacity-60 border border-gray-600">
+            <WordDisplay
+              words={nextSnippet.words.split(/\s+/)}
+              currentWordIndex={-1}
+              charIndex={0}
+              inputValue=""
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Input field that captures all keyboard events */}
       <input
-        ref={inputRef}
+        ref={containerRef}
         type="text"
-        className="w-full p-3 mt-4 text-xl bg-gray-900 text-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-        value={inputValue}
-        onChange={handleChange}
-        onKeyDown={handleKeyDown}
-        disabled={sessionEnded}
+        value={typed}
+        onChange={() => {}} // Controlled by keydown, not onChange
+        className="w-full mt-4 p-3 bg-gray-900 text-gray-400 rounded-md cursor-text focus:outline-none focus:ring-2 focus:ring-blue-500"
+        placeholder="Start typing..."
         autoFocus
         autoCapitalize="off"
         autoCorrect="off"
         spellCheck="false"
       />
-      {sessionEnded && (
-        <button
-          onClick={resetSession}
-          className="mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-lg"
-        >
-          Start New Session
-        </button>
-      )}
+
+      {/* Stats line */}
+      <div className="mt-4 text-sm text-gray-400 space-y-1">
+        <p>WPM: {wpm.toFixed(0)} | Accuracy: {accuracy.toFixed(0)}% | Errors: {errors}</p>
+        <p>Queue: {snippets.length} snippets</p>
+      </div>
     </div>
   );
 };

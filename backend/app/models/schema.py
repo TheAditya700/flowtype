@@ -17,10 +17,12 @@ class UserState(BaseModel):
     hesitationCount: int
     recentErrors: List[str]
     currentDifficulty: float
+    recentSnippetIds: Optional[List[str]] = None  # Track recently shown snippets to avoid repeats
 
 # API Models
 class SnippetRetrieveRequest(BaseModel):
     user_state: UserState
+    current_snippet_id: Optional[str] = None  # The snippet currently being typed to avoid returning the same one
 
 class SnippetResponse(BaseModel):
     id: uuid.UUID

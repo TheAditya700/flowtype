@@ -11,7 +11,7 @@ class VectorStore:
         self.index = None
         self.metadata = []
         
-        if self.index_path.exists():
+        if self.index_path.exists() and self.metadata_path.exists():
             self.load()
         else:
             # Create empty index
@@ -49,7 +49,7 @@ class VectorStore:
         # Search in FAISS
         distances, indices = self.index.search(
             query_vector.reshape(1, -1).astype('float32'), 
-            k * 3  # Over-retrieve for filtering
+            k * 3
         )
         
         # Filter by difficulty and return top k
