@@ -32,7 +32,18 @@ except ImportError:
 def load_training_data(batch_file: str = None) -> pd.DataFrame:
     """Load training batches from JSON or CSV."""
     if not batch_file:
-        batch_file = Path(__file__).parent.parent / 'data' / 'training_batches.json'
+        # Try multiple paths to find training_batches.json
+        possible_paths = [
+            Path(__file__).parent.parent.parent / 'data' / 'training_batches.json',  # Running from app/ml/train.py
+            Path('data') / 'training_batches.json',  # Running from project root
+            Path('/app/data') / 'training_batches.json',  # Docker
+        ]
+        for p in possible_paths:
+            if p.exists():
+                batch_file = p
+                break
+        if not batch_file:
+            batch_file = possible_paths[0]  # Default to first path for error message
     
     batch_file = Path(batch_file)
     
@@ -54,7 +65,13 @@ def load_training_data(batch_file: str = None) -> pd.DataFrame:
 def train_ranker(df: pd.DataFrame, output_model: str = None):
     """Train a LightGBM ranker model."""
     if output_model is None:
-        output_model = Path(__file__).parent / 'models' / 'ranker.pkl'
+        # Try to use a reasonable default for different execution contexts
+        possible_paths = [
+            Path(__file__).parent / 'models' / 'ranker.pkl',  # From app/ml/
+            Path('app/ml/models') / 'ranker.pkl',  # From project root
+            Path('/app/app/ml/models') / 'ranker.pkl',  # Docker (wrong but fallback)
+        ]
+        output_model = possible_paths[0]
     
     output_model = Path(output_model)
     output_model.parent.mkdir(exist_ok=True)

@@ -6,7 +6,6 @@ from rq import Queue
 from app.tasks.telemetry_tasks import process_telemetry
 from app.database import SessionLocal
 from app.models.db_models import TelemetrySnippetRaw
-import uuid
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -37,15 +36,15 @@ async def receive_snippet_telemetry(payload: dict, request: Request):
         db = SessionLocal()
         try:
             raw = TelemetrySnippetRaw(
-                id=uuid.uuid4(),
                 payload=payload,
                 user_id=(payload.get('user_state') or {}).get('user_id'),
                 session_id=(payload.get('snippet') or {}).get('session_id'),
                 source=source,
             )
             db.add(raw)
-            db.commit()
+            db.flush()  # Flush to get the ID assigned without committing yet
             raw_id = str(raw.id)
+            db.commit()
             logger.info('Persisted raw telemetry id=%s', raw_id)
         except Exception:
             db.rollback()
