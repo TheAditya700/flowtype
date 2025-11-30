@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import engine, Base
 from app.routers import health, snippets, sessions, users
+from app.routers import telemetry
 from app.ml.vector_store import VectorStore
 import logging
 
@@ -41,6 +42,7 @@ app.include_router(health.router, tags=["health"])
 app.include_router(snippets.router, prefix="/api/snippets", tags=["snippets"])
 app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
 app.include_router(users.router, prefix="/api/users", tags=["users"])
+app.include_router(telemetry.router, prefix="/api/telemetry", tags=["telemetry"])
 
 @app.get("/")
 def root():

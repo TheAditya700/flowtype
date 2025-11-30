@@ -32,6 +32,14 @@ class SnippetResponse(BaseModel):
     class Config:
         orm_mode = True
 
+class SnippetLog(BaseModel):
+    snippet_id: uuid.UUID
+    started_at: datetime
+    completed_at: datetime
+    wpm: float
+    accuracy: float
+    difficulty: float
+
 class SessionCreateRequest(BaseModel):
     startedAt: datetime
     durationSeconds: float
@@ -42,6 +50,7 @@ class SessionCreateRequest(BaseModel):
     difficultyLevel: float
     keystrokeData: List[KeystrokeEvent]
     user_id: Optional[uuid.UUID] = None
+    snippets: List[SnippetLog] = []
 
 class SessionResponse(BaseModel):
     id: uuid.UUID

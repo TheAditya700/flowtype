@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import WordDisplay from './WordDisplay';
 import useTypingSession from '../hooks/useTypingSession';
 import useWPMCalculation from '../hooks/useWPMCalculation';
-import { TypingSession } from '../types';
+import { KeystrokeEvent } from '../types';
 
 interface SnippetItem {
   id: string;
@@ -10,9 +10,18 @@ interface SnippetItem {
   difficulty: number;
 }
 
+interface SnippetStats {
+    wpm: number;
+    accuracy: number;
+    errors: number;
+    duration: number;
+    keystrokeEvents: KeystrokeEvent[];
+    startedAt: Date;
+}
+
 interface TypingZoneProps {
   snippets: SnippetItem[];
-  onSnippetComplete: (session: TypingSession) => void;
+  onSnippetComplete: (stats: SnippetStats) => void;
 }
 
 const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete }) => {
@@ -23,6 +32,7 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete }) 
   const [sessionStarted, setSessionStarted] = useState(false);
   const containerRef = useRef<HTMLInputElement>(null);
 
+  // Use local typing session tracking just for this snippet
   const {
     sessionStartTime,
     sessionDuration,
@@ -80,18 +90,19 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete }) 
 
         // If last word of snippet, complete snippet
         if (wordIndex === words.length - 1) {
-          endSession();
-          const completedSession: TypingSession = {
-            startedAt: new Date(sessionStartTime!),
-            durationSeconds: sessionDuration,
-            wordsTyped: words.length,
-            errors,
+          const finalDuration = sessionDuration; // Capture current duration
+          endSession(); // Mark end
+          
+          const stats: SnippetStats = {
             wpm,
             accuracy: accuracy / 100,
-            difficultyLevel: currentSnippet.difficulty,
-            keystrokeData: keystrokeEvents,
+            errors,
+            duration: finalDuration,
+            keystrokeEvents,
+            startedAt: new Date(sessionStartTime || Date.now())
           };
-          onSnippetComplete(completedSession);
+          
+          onSnippetComplete(stats);
 
           // Reset for next snippet (parent will remove current and shift queue)
           // The new currentSnippet (from snippets[1]) will become snippets[0]

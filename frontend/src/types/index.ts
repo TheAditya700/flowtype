@@ -36,4 +36,14 @@ export interface TypingSession {
   accuracy: number;
   difficultyLevel: number;
   keystrokeData: KeystrokeEvent[];
+  snippets: SnippetLog[];
+}
+
+export interface SnippetLog {
+  snippet_id: string;
+  started_at: string; // ISO string
+  completed_at: string; // ISO string
+  wpm: number;
+  accuracy: number;
+  difficulty: number;
 }

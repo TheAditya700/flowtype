@@ -49,8 +49,11 @@ class SnippetUsage(Base):
     __tablename__ = "snippet_usage"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     session_id = Column(UUID(as_uuid=True), ForeignKey("typing_sessions.id"))
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     snippet_id = Column(UUID(as_uuid=True), ForeignKey("snippets.id"))
-    presented_at = Column(DateTime, default=func.now())
+    started_at = Column(DateTime, default=func.now())
+    completed_at = Column(DateTime)
     user_wpm = Column(Float)
     user_accuracy = Column(Float)
     snippet_position = Column(Integer)
+    difficulty_snapshot = Column(Float)

@@ -29,3 +29,20 @@ export async function saveSession(session: TypingSession): Promise<void> {
     body: JSON.stringify(session)
   });
 }
+
+export async function sendSnippetTelemetry(snippetLog: any, userState?: UserState): Promise<void> {
+  // send snippet-level telemetry to backend for online tuning and offline training
+  const payload = { snippet: snippetLog, user_state: userState };
+  try {
+    const res = await fetch(`${API_BASE}/telemetry/snippet`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      console.warn('Telemetry post failed', res.status);
+    }
+  } catch (err) {
+    console.warn('Failed to send telemetry', err);
+  }
+}

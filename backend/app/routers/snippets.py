@@ -61,7 +61,7 @@ def retrieve_snippets(
     )
 
     # 3. Rank snippets
-    ranked_snippets = rank_snippets(user_embedding, candidate_snippets)
+    ranked_snippets = rank_snippets(user_embedding, candidate_snippets, current_diff)
     
     if not ranked_snippets:
         raise HTTPException(status_code=404, detail="No suitable snippets found.")

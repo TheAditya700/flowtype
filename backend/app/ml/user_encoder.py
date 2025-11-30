@@ -23,7 +23,9 @@ def get_user_embedding(state: UserState) -> np.ndarray:
     
     # Generate a pseudo-random projection using deterministic seeding
     # This creates a consistent but rich embedding from the 4 features
-    seed = int((wpm_norm + acc_norm + back_norm + diff_norm) * 1000) % (2**31 - 1)
+    # FIXED: Use a constant seed so the projection matrix is stable!
+    # The features (wpm, acc, etc) move the user *within* this fixed space.
+    seed = 42 
     rng = np.random.RandomState(seed)
     projection_matrix = rng.randn(4, settings.embedding_dim).astype('float32')
     projection_matrix = projection_matrix / np.linalg.norm(projection_matrix, axis=1, keepdims=True)
