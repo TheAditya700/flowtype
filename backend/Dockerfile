@@ -12,8 +12,9 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Download sentence-transformers model (cache it in image)
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+# NOTE: ML/training dependencies (sentence-transformers, torch, faiss, etc.)
+# have been moved to `requirements-ml.txt` to keep runtime image small.
+# If you need to run training inside a container, use `Dockerfile.train`.
 
 # Copy application
 COPY . .
