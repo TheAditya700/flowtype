@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import TypingZone from './components/TypingZone';
 import StatsPanel from './components/StatsPanel';
 import { fetchNextSnippet, sendSnippetTelemetry } from './api/client';
-import { TypingSession, UserState, SnippetLog, KeystrokeEvent } from './types';
-import { ArrowRight, RotateCcw } from 'lucide-react';
+import { UserState, SnippetLog, KeystrokeEvent } from './types';
+import { RotateCcw } from 'lucide-react';
 
 interface QueuedSnippet {
   id: string;
@@ -24,7 +24,6 @@ function App() {
   });
   const [snippetLogs, setSnippetLogs] = useState<SnippetLog[]>([]);
   const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
-  const [aggregatedKeystrokes, setAggregatedKeystrokes] = useState<KeystrokeEvent[]>([]);
   const [sessionStats, setSessionStats] = useState({
     totalWords: 0,
     totalErrors: 0,
@@ -98,7 +97,6 @@ function App() {
     };
 
     setSnippetLogs(prev => [...prev, log]);
-    setAggregatedKeystrokes(prev => [...prev, ...stats.keystrokeEvents]);
     setSessionStats(prev => ({
         totalWords: prev.totalWords + currentSnippet.words.split(/\s+/).length,
         totalErrors: prev.totalErrors + stats.errors,
@@ -147,7 +145,6 @@ function App() {
 
   const resetSession = () => {
     setSnippetLogs([]);
-    setAggregatedKeystrokes([]);
     setSessionStats({ totalWords: 0, totalErrors: 0, totalDuration: 0 });
     setSessionStartTime(null);
     setUserState({

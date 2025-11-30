@@ -1,5 +1,6 @@
 import { UserState, TypingSession, SnippetResponse } from '../types';
 
+// @ts-ignore - Vite env type
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
 export async function fetchNextSnippet(userState: UserState, currentSnippetId?: string): Promise<SnippetResponse | null> {

@@ -40,13 +40,15 @@ services:
     command: rq worker telemetry
 
   frontend:
+    # For dev: build from source and use dev server
     build:
       context: ./frontend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
     ports:
       - "5173:5173"
     volumes:
       - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
     command: npm run dev
 
 volumes:

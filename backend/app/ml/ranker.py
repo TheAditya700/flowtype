@@ -1,17 +1,34 @@
-import numpy as np
+"""
+Snippet ranker. Requires numpy if ML features are enabled.
+Gracefully falls back to basic ranking if numpy unavailable.
+"""
+try:
+    import numpy as np
+    HAS_NUMPY = True
+except ImportError:
+    HAS_NUMPY = False
+    np = None
+
 from typing import List
 
+
 def rank_snippets(
-    user_embedding: np.ndarray, 
+    user_embedding, 
     candidates: List[dict], 
     target_difficulty: float
 ) -> List[dict]:
     """
     Ranks candidate snippets based on a flow-based function.
     Balances semantic match (vector distance) and difficulty suitability.
+    If numpy is unavailable, falls back to difficulty-only ranking.
     """
     if not candidates:
         return []
+
+    if not HAS_NUMPY:
+        # Fallback: simple difficulty-based ranking
+        ranked = sorted(candidates, key=lambda c: abs(c.get('difficulty', 5.0) - target_difficulty))
+        return ranked
 
     # Weights for the scoring function
     # We want to minimize distance (better semantic match)
@@ -52,3 +69,4 @@ def rank_snippets(
     ranked_candidates.sort(key=lambda x: x['score'], reverse=True)
     
     return ranked_candidates
+
