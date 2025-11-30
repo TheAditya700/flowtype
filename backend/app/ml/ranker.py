@@ -1,43 +1,22 @@
-"""
-Snippet ranker. Requires numpy if ML features are enabled.
-Gracefully falls back to basic ranking if numpy unavailable.
-"""
-try:
-    import numpy as np
-    HAS_NUMPY = True
-except ImportError:
-    HAS_NUMPY = False
-    np = None
-
+import numpy as np
 from typing import List
 
 
 def rank_snippets(
-    user_embedding, 
+    user_embedding: np.ndarray, 
     candidates: List[dict], 
     target_difficulty: float
 ) -> List[dict]:
     """
     Ranks candidate snippets based on a flow-based function.
     Balances semantic match (vector distance) and difficulty suitability.
-    If numpy is unavailable, falls back to difficulty-only ranking.
     """
     if not candidates:
         return []
 
-    if not HAS_NUMPY:
-        # Fallback: simple difficulty-based ranking
-        ranked = sorted(candidates, key=lambda c: abs(c.get('difficulty', 5.0) - target_difficulty))
-        return ranked
-
     # Weights for the scoring function
-    # We want to minimize distance (better semantic match)
-    # We want to minimize difficulty difference (better skill match)
-    
-    # Score = (1 / (1 + distance)) * w_semantic - abs(diff - target) * w_diff
-    
     w_semantic = 1.0
-    w_diff = 0.5 # Penalty weight for difficulty mismatch
+    w_diff = 0.5
 
     ranked_candidates = []
     
@@ -46,8 +25,6 @@ def rank_snippets(
         difficulty = cand.get('difficulty', 5.0)
         
         # Semantic Score (Inverse of L2 distance)
-        # L2 distance in FAISS is squared Euclidean if MetricL2
-        # Assuming standard Euclidean here, smaller is better.
         semantic_score = 1.0 / (1.0 + distance)
         
         # Difficulty Penalty

@@ -1,10 +1,2 @@
-# ML and training-only dependencies
-sentence-transformers
-faiss-cpu
-numpy
-scikit-learn
-lightgbm
-pandas
+# ML and training-only dependencies (GPU for training)
 torch
-
-# RQ/Redis already in runtime requirements; keep ML deps separate so training images can install them only when needed.

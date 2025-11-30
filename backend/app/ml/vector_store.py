@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from app.config import settings
 
+
 class VectorStore:
     def __init__(self):
         self.index_path = Path(settings.faiss_index_path)

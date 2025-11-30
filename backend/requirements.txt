@@ -6,6 +6,14 @@ sqlalchemy
 psycopg2-binary
 alembic
 
+# ML dependencies needed for runtime (ranking, embeddings)
+sentence-transformers
+faiss-cpu
+numpy
+scikit-learn
+lightgbm
+pandas
+
 # Utilities
 python-dotenv
 python-multipart
