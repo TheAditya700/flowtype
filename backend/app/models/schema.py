@@ -26,11 +26,18 @@ class SnippetRetrieveRequest(BaseModel):
 
 class SnippetResponse(BaseModel):
     id: uuid.UUID
-    words: str
-    difficulty: float
+    text: str
+    words: List[str]
+    features: dict
+    difficulty_score: Optional[float] = None
 
     class Config:
         orm_mode = True
+
+class SnippetRetrieveResponse(BaseModel):
+    id: uuid.UUID
+    text: str
+    words: List[str]
 
 class SnippetLog(BaseModel):
     snippet_id: uuid.UUID

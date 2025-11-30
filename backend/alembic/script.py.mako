@@ -1,20 +1,28 @@
+"""${message}
+
+Revision ID: ${up_revision}
+Revises: ${down_revision | comma,n}
+Create Date: ${create_date}
+
 """
-Template used by Alembic when generating new revisions.
-This is a minimal file to satisfy alembic usage in this repo.
-"""
-% from alembic import util
-%
-"""Auto-generated migration script."""
+from typing import Sequence, Union
+
 from alembic import op
 import sqlalchemy as sa
+${imports if imports else ""}
 
-revision = '${revision}'
-down_revision = ${down_revision}
-branch_labels = None
-depends_on = None
+# revision identifiers, used by Alembic.
+revision: str = ${repr(up_revision)}
+down_revision: Union[str, Sequence[str], None] = ${repr(down_revision)}
+branch_labels: Union[str, Sequence[str], None] = ${repr(branch_labels)}
+depends_on: Union[str, Sequence[str], None] = ${repr(depends_on)}
 
-def upgrade():
-    pass
 
-def downgrade():
-    pass
+def upgrade() -> None:
+    """Upgrade schema."""
+    ${upgrades if upgrades else "pass"}
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    ${downgrades if downgrades else "pass"}

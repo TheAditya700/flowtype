@@ -35,19 +35,30 @@ class User(Base):
 
 class Snippet(Base):
     __tablename__ = "snippets"
+
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
-    words = Column(String, nullable=False)
+
+    # Sequence of words (space-joined string)
+    text = Column(String, nullable=False)
+
+    # List of words as JSON for convenience
+    words = Column(JSON, nullable=False)
+
     word_count = Column(Integer, nullable=False)
-    difficulty_score = Column(Float, nullable=False)
-    avg_word_length = Column(Float)
-    punctuation_density = Column(Float)
-    rare_letter_count = Column(Integer)
-    bigram_rarity = Column(Float)
+
+    # Full difficulty feature vector (40+ fields)
+    features = Column(JSON, nullable=False)
+
+    # Optional: scalar difficulty summary (e.g., learned by model)
+    difficulty_score = Column(Float, nullable=True)
+
     created_at = Column(DateTime, default=func.now())
-    
+
     __table_args__ = (
-        Index('idx_difficulty', 'difficulty_score'),
+        Index("idx_word_count", "word_count"),
+        Index("idx_difficulty_score", "difficulty_score"),
     )
+
 
 class TypingSession(Base):
     __tablename__ = "typing_sessions"
