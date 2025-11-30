@@ -167,6 +167,25 @@ flowtype/
 *   **Backend:** Designed for deployment on Railway using the provided `Dockerfile`.
 *   **Frontend:** Designed for static deployment on Vercel.
 
+## Documentation
+
+Complete documentation is available in the `/docs/` folder:
+
+- **[API.md](docs/API.md)** - REST API endpoint documentation
+- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System design and data flow
+- **[DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Deployment instructions for Railway and Vercel
+- **[DEVELOPMENT.md](docs/DEVELOPMENT.md)** - Development setup and best practices
+- **[ML_MODELS.md](docs/ML_MODELS.md)** - Detailed ML architecture and models
+- **[TESTING.md](docs/TESTING.md)** - Testing strategies and guidelines
+- **[TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** - Common issues and solutions
+- **[PROJECT_STATUS.md](docs/PROJECT_STATUS.md)** - Project roadmap and status
+
 ## Contributing
 
-Feel free to contribute to the development of FlowType!
+Feel free to contribute to the development of FlowType! 
+
+Please see [DEVELOPMENT.md](docs/DEVELOPMENT.md) for:
+- Development environment setup
+- Code standards and conventions
+- Testing requirements
+- Pull request guidelines
