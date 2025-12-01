@@ -18,6 +18,7 @@ class UserState(BaseModel):
     recentErrors: List[str]
     currentDifficulty: float
     recentSnippetIds: Optional[List[str]] = None  # Track recently shown snippets to avoid repeats
+    recentKeystrokes: Optional[List[KeystrokeEvent]] = None # Raw keystrokes for GRU encoder
 
 # API Models
 class SnippetRetrieveRequest(BaseModel):

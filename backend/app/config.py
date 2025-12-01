@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     
     # ML
     embedding_model: str = "all-MiniLM-L6-v2"
-    embedding_dim: int = 384
+    embedding_dim: int = 30
     
     # API
     cors_origins: list[str] = ["http://localhost:5173"]

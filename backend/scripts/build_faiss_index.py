@@ -2,7 +2,6 @@ import numpy as np
 from sqlalchemy.orm import sessionmaker
 from app.database import engine
 from app.models.db_models import Snippet
-from app.ml.snippet_encoder import get_snippet_embedding
 from app.ml.vector_store import VectorStore
 import logging
 import json
@@ -12,38 +11,51 @@ logger = logging.getLogger(__name__)
 
 def build_index():
     """
-    Fetches all snippets from DB, computes embeddings, and builds a FAISS index.
+    Fetches all snippets from DB, gets existing embeddings, and builds a FAISS index.
     """
     Session = sessionmaker(bind=engine)
     session = Session()
     
     logger.info("Fetching all snippets from the database...")
-    snippets = session.query(Snippet).all()
+    snippets = session.query(Snippet).filter(Snippet.embedding.isnot(None)).all()
     session.close()
     
     if not snippets:
-        logger.warning("No snippets found in the database. Run load_corpus.py first.")
+        logger.warning("No snippets with embeddings found in the database. Run feature extraction first.")
         return
 
-    logger.info(f"Found {len(snippets)} snippets. Computing embeddings...")
+    logger.info(f"Found {len(snippets)} snippets. Building index...")
     
     embeddings = []
     metadata = []
     
     for snippet in snippets:
-        embedding = get_snippet_embedding(snippet.words)
-        embeddings.append(embedding)
+        # Snippet.embedding is stored as a list of floats (JSON)
+        emb_list = snippet.embedding
+        if not emb_list:
+            continue
+            
+        embeddings.append(emb_list)
         metadata.append({
             "id": str(snippet.id),
             "words": snippet.words,
-            "difficulty": snippet.difficulty_score
+            "difficulty": snippet.difficulty_score,
+            "embedding": emb_list # Store embedding for Two-Tower ranking
         })
 
-    embeddings_np = np.array(embeddings)
+    if not embeddings:
+        logger.warning("No valid embeddings found.")
+        return
+
+    embeddings_np = np.array(embeddings, dtype=np.float32)
     
-    logger.info("Embeddings computed. Building and saving FAISS index...")
+    logger.info(f"Embeddings shape: {embeddings_np.shape}. Building and saving FAISS index...")
     
     vector_store = VectorStore()
+    # Initialize index with correct dimension
+    import faiss
+    vector_store.index = faiss.IndexFlatL2(embeddings_np.shape[1])
+    
     vector_store.add(embeddings_np, metadata)
     vector_store.save()
     

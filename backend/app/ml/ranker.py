@@ -1,49 +1,150 @@
 import numpy as np
-from typing import List
+import torch
+from typing import List, Dict, Any
+from app.ml.architecture import TwoTowerRanker
+from app.config import settings
+from app.ml.user_encoder import get_user_embedding
+
+# global lazy-loaded model
+_RANKER_MODEL = None
 
 
+# ---------------------------------------------------------
+# Load / init the Two-Tower model
+# ---------------------------------------------------------
+def get_ranker_model():
+    global _RANKER_MODEL
+
+    if _RANKER_MODEL is None:
+        _RANKER_MODEL = TwoTowerRanker(embedding_dim=settings.embedding_dim)
+        _RANKER_MODEL.eval()
+
+        # TODO: load trained weights
+        # state = torch.load(settings.ranker_model_path, map_location="cpu")
+        # _RANKER_MODEL.load_state_dict(state)
+
+    return _RANKER_MODEL
+
+
+# ---------------------------------------------------------
+# Ranking Function (new pipeline)
+# ---------------------------------------------------------
 def rank_snippets(
-    user_embedding: np.ndarray, 
-    candidates: List[dict], 
-    target_difficulty: float
+    user_state: Dict[str, Any],
+    candidates: List[dict],
+    target_difficulty: float,
+    exploration_bonus: float = 0.0,
 ) -> List[dict]:
     """
-    Ranks candidate snippets based on a flow-based function.
-    Balances semantic match (vector distance) and difficulty suitability.
+    Ranks candidate snippets using the Two-Tower model if snippet embeddings exist.
+    Otherwise falls back to difficulty + heuristic score.
+
+    Inputs:
+      user_state        – recent keystrokes, stats, WPM history, etc.
+      candidates        – list of snippet dicts from DB/FAISS
+      target_difficulty – desired difficulty level
+      exploration_bonus – optional RL exploration weight
+
+    Returns:
+      ranked list of candidate dicts with score + debug_info
     """
+
     if not candidates:
         return []
 
-    # Weights for the scoring function
-    w_semantic = 1.0
-    w_diff = 0.5
+    # -----------------------------------------------------
+    # Step 1: Compute User Embedding (GRU + stats tower)
+    # -----------------------------------------------------
+    user_embedding = get_user_embedding(user_state) # type: ignore
+    user_tensor = torch.tensor(user_embedding, dtype=torch.float32).unsqueeze(0)
 
-    ranked_candidates = []
-    
-    for cand in candidates:
-        distance = cand.get('distance', 1.0)
-        difficulty = cand.get('difficulty', 5.0)
-        
-        # Semantic Score (Inverse of L2 distance)
-        semantic_score = 1.0 / (1.0 + distance)
-        
-        # Difficulty Penalty
-        diff_penalty = abs(difficulty - target_difficulty)
-        
-        # Final Combined Score (Higher is better)
-        final_score = (semantic_score * w_semantic) - (diff_penalty * w_diff)
-        
-        ranked_candidates.append({
-            **cand,
-            'score': final_score,
-            'debug_info': {
-                'semantic_score': semantic_score,
-                'diff_penalty': diff_penalty
-            }
-        })
-    
-    # Sort by final score descending (best match first)
-    ranked_candidates.sort(key=lambda x: x['score'], reverse=True)
-    
-    return ranked_candidates
+    # -----------------------------------------------------
+    # Step 2: Check if snippet embeddings exist
+    # -----------------------------------------------------
+    has_embeddings = all("embedding" in c and c["embedding"] is not None for c in candidates)
 
+    ranker = get_ranker_model()
+    ranked = []
+
+    # =====================================================
+    # Full Two-Tower scoring (preferred)
+    # =====================================================
+    if has_embeddings:
+        snippet_matrix = np.stack([np.array(c["embedding"], dtype=np.float32) for c in candidates])
+        snippet_tensor = torch.tensor(snippet_matrix, dtype=torch.float32)
+
+        # Broadcast user → batch
+        user_batch = user_tensor.expand(len(candidates), -1)
+
+        with torch.no_grad():
+            # shape: (N, 1)
+            scores = ranker(user_batch, snippet_tensor).squeeze(1).numpy()
+
+        for score, cand in zip(scores, candidates):
+            final_score = float(score) + exploration_bonus
+
+            ranked.append({
+                **cand,
+                "score": final_score,
+                "debug_info": {
+                    "model_score": float(score),
+                    "exploration_bonus": exploration_bonus,
+                    "mode": "two_tower"
+                }
+            })
+
+    else:
+        raise ValueError("Snippet embeddings missing; cannot use Two-Tower ranker.")
+
+    # -----------------------------------------------------
+    # Step 3: Sort (descending)
+    # -----------------------------------------------------
+    ranked.sort(key=lambda x: x["score"], reverse=True)
+    return ranked
+
+if __name__ == "__main__":
+    from app.models.schema import UserState, KeystrokeEvent
+
+    # Create a valid test UserState instance
+    user_state_obj = UserState(
+        rollingWpm=60.0,
+        rollingAccuracy=0.92,
+        backspaceRate=0.08,
+        hesitationCount=3,
+        recentErrors=["t", "h"],
+        currentDifficulty=4.7,
+        recentSnippetIds=[],
+
+        recentKeystrokes=[
+            KeystrokeEvent(timestamp=10, key="a", isBackspace=False, isCorrect=True),
+            KeystrokeEvent(timestamp=25, key="b", isBackspace=True,  isCorrect=False),
+        ],
+
+    )
+
+    # Fake snippets
+    candidates = [
+        {
+            "id": "A",
+            "text": "example snippet here",
+            "difficulty_score": 4.2,
+            "embedding": np.random.randn(30).astype("float32").tolist(),
+        },
+        {
+            "id": "B",
+            "text": "another practice line",
+            "difficulty_score": 5.1,
+            "embedding": np.random.randn(30).astype("float32").tolist(),
+        },
+    ]
+
+    ranked = rank_snippets(
+        user_state=user_state_obj, # type: ignore
+        candidates=candidates,
+        target_difficulty=4.5,
+        exploration_bonus=0.1,
+    )
+
+    print("\n=== Test Ranking Output ===")
+    for r in ranked:
+        print(r["id"], r["score"], r["debug_info"])
