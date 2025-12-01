@@ -33,31 +33,40 @@ class User(Base):
     created_at = Column(DateTime, default=func.now())
     last_active = Column(DateTime, default=func.now(), onupdate=func.now())
 
+
 class Snippet(Base):
     __tablename__ = "snippets"
 
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
 
-    # Sequence of words (space-joined string)
+    # Raw snippet text
     text = Column(String, nullable=False)
 
-    # List of words as JSON for convenience
+    # Tokenized words
     words = Column(JSON, nullable=False)
 
+    # Metadata
     word_count = Column(Integer, nullable=False)
 
-    # Full difficulty feature vector (40+ fields)
+    # Full difficulty feature vector (raw)
     features = Column(JSON, nullable=False)
 
-    # Optional: scalar difficulty summary (e.g., learned by model)
+    # Normalized feature vector (post-scaling)
+    normalized_features = Column(JSON, nullable=True)
+
+    # Final embedding vector (e.g., PCA/UMAP/MLP output, float list)
+    embedding = Column(JSON, nullable=True)
+
+    # Difficulty score (optional model-generated scalar)
     difficulty_score = Column(Float, nullable=True)
 
     created_at = Column(DateTime, default=func.now())
 
     __table_args__ = (
-        Index("idx_word_count", "word_count"),
-        Index("idx_difficulty_score", "difficulty_score"),
+        Index('idx_difficulty', 'difficulty_score'),
     )
+
+
 
 
 class TypingSession(Base):

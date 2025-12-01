@@ -61,12 +61,12 @@ def build_weighted_ngrams():
         # Weighted bigrams
         for i in range(L - 1):
             bg = chars[i] + chars[i + 1]
-            bigram_counter[bg] += zipf
+            bigram_counter[bg] += zipf #type: ignore
 
         # Weighted trigrams
         for i in range(L - 2):
             tg = chars[i] + chars[i + 1] + chars[i + 2]
-            trigram_counter[tg] += zipf
+            trigram_counter[tg] += zipf # type: ignore
 
     # ---------------------------------------------------------
     # Stage 2 — Convert counters → scaled frequencies

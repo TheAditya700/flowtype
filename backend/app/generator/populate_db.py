@@ -1,20 +1,22 @@
+# app/generator/populate_snippets.py
+
 import json
-from pathlib import Path
 from sqlalchemy.orm import sessionmaker
 from app.database import engine
 from app.models.db_models import Snippet
 import logging
+from . import config
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path(__file__).resolve().parent / "data"
-SNIPPET_FILE = DATA_DIR / "snippets.json"
+
+SNIPPET_FILE = config.SNIPPETS_PATH
 
 
 def populate_snippet_database(clear_existing=True):
     """
-    Loads generated snippets.json and inserts them into the Snippet DB table.
+    Loads generated snippets.json and inserts them into the Snippet DB.
     """
 
     if not SNIPPET_FILE.exists():
@@ -35,25 +37,22 @@ def populate_snippet_database(clear_existing=True):
     db_objects = []
 
     for s in snippets:
-        text = s["text"]
-        words = s["words"]
-        features = s["features"]
-
         obj = Snippet(
-            text=text,
-            words=words,
-            word_count=len(words),
-            features=features,
-            difficulty_score=None  # will be learned later
+            text=s["text"],
+            words=s["words"],
+            word_count=len(s["words"]),
+            features=s["features"],
+            difficulty_score=None,  # Will be learned later
         )
 
         db_objects.append(obj)
 
     logger.info(f"Inserting {len(db_objects)} snippets into database ...")
+
     try:
         session.bulk_save_objects(db_objects)
         session.commit()
-        logger.info("Snippet table populated successfully.")
+        logger.info("✔ Snippet table populated successfully.")
 
     except Exception as e:
         session.rollback()
