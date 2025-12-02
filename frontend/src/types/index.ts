@@ -27,22 +27,33 @@ export interface Snippet {
   expectedWpm: number;
 }
 
-export interface TypingSession {
-  startedAt: Date;
-  durationSeconds: number;
-  wordsTyped: number;
-  errors: number;
+export interface SnippetResult {
+  snippet_id: string;
   wpm: number;
   accuracy: number;
-  difficultyLevel: number;
+  difficulty: number;
+  started_at?: number;
+  completed_at?: number;
+}
+
+export interface SessionCreateRequest {
+  user_id?: string;
+  durationSeconds: number;
+  wordsTyped: number;
   keystrokeData: KeystrokeEvent[];
-  snippets: SnippetLog[];
+  wpm: number;
+  accuracy: number;
+  errors: number;
+  difficultyLevel: number;
+  snippets: SnippetResult[];
+  user_state: UserState;
+  flowScore?: number;
 }
 
 export interface SnippetLog {
   snippet_id: string;
-  started_at: string; // ISO string
-  completed_at: string; // ISO string
+  started_at: string;
+  completed_at: string;
   wpm: number;
   accuracy: number;
   difficulty: number;

@@ -1,4 +1,4 @@
-import { UserState, TypingSession, SnippetResponse } from '../types';
+import { UserState, SessionCreateRequest, SnippetResponse } from '../types';
 
 // @ts-ignore - Vite env type
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -23,27 +23,14 @@ export async function fetchNextSnippet(userState: UserState, currentSnippetId?: 
   return null;
 }
 
-export async function saveSession(session: TypingSession): Promise<void> {
-  await fetch(`${API_BASE}/sessions`, {
+export async function saveSession(session: SessionCreateRequest): Promise<void> {
+  const response = await fetch(`${API_BASE}/sessions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(session)
   });
-}
-
-export async function sendSnippetTelemetry(snippetLog: any, userState?: UserState): Promise<void> {
-  // send snippet-level telemetry to backend for online tuning and offline training
-  const payload = { snippet: snippetLog, user_state: userState };
-  try {
-    const res = await fetch(`${API_BASE}/telemetry/snippet`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    if (!res.ok) {
-      console.warn('Telemetry post failed', res.status);
-    }
-  } catch (err) {
-    console.warn('Failed to send telemetry', err);
+  
+  if (!response.ok) {
+    console.error("Failed to save session:", await response.text());
   }
 }

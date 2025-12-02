@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import TypingZone from './components/TypingZone';
 import StatsPanel from './components/StatsPanel';
-import { fetchNextSnippet, sendSnippetTelemetry } from './api/client';
-import { UserState, SnippetLog, KeystrokeEvent } from './types';
+import { fetchNextSnippet, saveSession } from './api/client';
+import { UserState, SnippetLog, KeystrokeEvent, SessionCreateRequest, SnippetResult } from './types';
 import { RotateCcw } from 'lucide-react';
 
 interface QueuedSnippet {
@@ -122,22 +122,33 @@ function App() {
     setSnippetQueue(prev => prev.slice(1));
     fetchMoreSnippets(newUserState, 1);
 
-    // Send per-snippet telemetry to backend for online tuning / offline training
-    try {
-      // Build a minimal SnippetLog to send
-      const snippetLog = {
+    // Construct full session payload
+    // We treat each snippet completion as a "session" for now to get granular updates
+    const snippetResult: SnippetResult = {
         snippet_id: currentSnippet.id,
-        started_at: stats.startedAt.toISOString(),
-        completed_at: new Date().toISOString(),
         wpm: stats.wpm,
         accuracy: stats.accuracy,
-        difficulty: currentSnippet.difficulty
-      };
-      // send in background (no await)
-      sendSnippetTelemetry(snippetLog, newUserState).catch(err => console.warn('telemetry error', err));
-    } catch (err) {
-      console.warn('Failed to enqueue telemetry', err);
-    }
+        difficulty: currentSnippet.difficulty,
+        started_at: stats.startedAt.getTime(),
+        completed_at: Date.now()
+    };
+
+    const sessionPayload: SessionCreateRequest = {
+        user_id: "test_user_default", // Placeholder until Auth
+        durationSeconds: stats.duration,
+        wordsTyped: currentSnippet.words.length, // or calculate from keystrokes
+        keystrokeData: stats.keystrokeEvents,
+        wpm: stats.wpm,
+        accuracy: stats.accuracy,
+        errors: stats.errors,
+        difficultyLevel: currentSnippet.difficulty,
+        snippets: [snippetResult],
+        user_state: userState, // Send PREVIOUS state so backend knows context? Or new? Usually previous state + new events -> new state.
+        flowScore: 0.0 // Calculated on backend usually?
+    };
+
+    // Send to backend
+    saveSession(sessionPayload).catch(err => console.error("Failed to save session:", err));
   };
 
   // Manual session save removed: telemetry is sent per-snippet.
