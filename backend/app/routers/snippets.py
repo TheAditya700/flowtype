@@ -51,7 +51,7 @@ def retrieve_snippets(
             user_features = user.features or {}
 
     # 2. Encode user state
-    user_embedding = get_user_embedding(request.user_state, user_features=user_features)
+    user_embedding = get_user_embedding(request.user_state, user_features_dict=user_features)
     
     # 3. Access the vector store from the app state and search
     vector_store = req.app.state.vector_store

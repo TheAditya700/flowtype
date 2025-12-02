@@ -6,7 +6,7 @@ import { KeystrokeEvent } from '../types';
 
 interface SnippetItem {
   id: string;
-  words: string;
+  words: string[];
   difficulty: number;
 }
 
@@ -47,7 +47,7 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete }) 
   // Always use the first snippet (current) and second snippet (next preview)
   const currentSnippet = snippets[0];
   const nextSnippet = snippets[1];
-  const words = currentSnippet?.words.split(/\s+/) || [];
+  const words = currentSnippet?.words || [];
 
   // Key handler for typing
   useEffect(() => {
@@ -160,7 +160,7 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete }) 
         {nextSnippet && (
           <div className="p-4 rounded-lg bg-gray-800 opacity-60 border border-gray-600">
             <WordDisplay
-              words={nextSnippet.words.split(/\s+/)}
+              words={nextSnippet.words || []}
               currentWordIndex={-1}
               charIndex={0}
               inputValue=""

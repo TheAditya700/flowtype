@@ -1,6 +1,6 @@
 export interface SnippetResponse {
   id: string;
-  words: string;
+  words: string[];
   difficulty: number;
 }
 

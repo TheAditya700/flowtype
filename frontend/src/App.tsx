@@ -7,7 +7,7 @@ import { RotateCcw } from 'lucide-react';
 
 interface QueuedSnippet {
   id: string;
-  words: string;
+  words: string[];
   difficulty: number;
 }
 
@@ -98,7 +98,7 @@ function App() {
 
     setSnippetLogs(prev => [...prev, log]);
     setSessionStats(prev => ({
-        totalWords: prev.totalWords + currentSnippet.words.split(/\s+/).length,
+        totalWords: prev.totalWords + currentSnippet.words.length,
         totalErrors: prev.totalErrors + stats.errors,
         totalDuration: prev.totalDuration + stats.duration
     }));
