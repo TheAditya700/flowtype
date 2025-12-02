@@ -1,410 +1,333 @@
-# FlowType Project Status & Roadmap
+# **FlowType Project Status & Roadmap (Updated – 2025)**
 
-This document provides an overview of the current project status and future development plans.
+This document summarizes the current architecture, ML pipeline, backend/frontend progress, and future roadmap of the **FlowType adaptive typing engine**.
 
-## Project Status
+---
 
-### Current Version
-**v0.1.0** - MVP (Minimum Viable Product)
+# **Project Status**
 
-### Completion Status
+## **Current Version**
 
-#### ✅ Completed Features
+**v0.2.0 — Engine Rewrite Milestone**
 
-**Backend Core:**
-- [x] FastAPI application structure
-- [x] PostgreSQL database integration with SQLAlchemy
-- [x] FAISS vector store for snippet retrieval
-- [x] Sentence transformers for semantic embeddings
-- [x] Difficulty scoring algorithm
-- [x] Two-tower retrieval system
-- [x] User state encoding
-- [x] Session recording and storage
-- [x] Basic health check endpoint
+## **Completion Status**
 
-**Frontend Core:**
-- [x] React + TypeScript + Vite setup
-- [x] Typing interface with real-time keystroke tracking
-- [x] WPM calculation
-- [x] Accuracy tracking
-- [x] Session completion and result display
-- [x] Tailwind CSS styling
-- [x] API client for backend communication
-- [x] Component-based architecture
-- [x] Custom hooks for state management
+---
 
-**ML Pipeline:**
-- [x] Word corpus loading
-- [x] Snippet generation from corpus
-- [x] Embedding generation with sentence-transformers
-- [x] FAISS index building
-- [x] User performance metric encoding
-- [x] Difficulty-aware ranking
+# ✅ **Completed Features**
 
-**DevOps & Documentation:**
-- [x] Docker containerization for backend
-- [x] Development setup guide
-- [x] API documentation
-- [x] Architecture documentation
-- [x] Deployment guide (Railway + Vercel)
+## **Core Backend**
 
-#### 🚧 In Progress / Partially Complete
+* [x] FastAPI application + modular router structure
+* [x] SQLite/PostgreSQL support via SQLAlchemy
+* [x] New **snippet schema** with:
 
-- [ ] Comprehensive test coverage (unit tests written, need integration tests)
-- [ ] Frontend end-to-end testing
-- [ ] Performance optimization for large corpus
-- [ ] Advanced difficulty adjustment algorithms
-- [ ] User authentication (basic structure ready)
-- [ ] Session history viewing
+  * engineered difficulty feature vectors
+  * normalized feature vectors
+  * stored embedding vectors
+* [x] Snippet generation pipeline
+* [x] Enriched 10k wordlist with wordfreq Zipf values
+* [x] Weighted bigram/trigram frequency generation
+* [x] Difficulty feature extractor (50+ ergonomic & linguistic features)
+* [x] Snippet vectorization + normalization
+* [x] FAISS index integration (top-K candidate retrieval)
+* [x] Basic snippet ranking service
+* [x] Keystroke telemetry ingestion
+* [x] RQ background workers + Redis task queue
 
-#### ⏳ Not Yet Started
+## **ML Pipeline**
 
-- [ ] Mobile-responsive design refinements
-- [ ] Multiplayer/leaderboard features
-- [ ] Advanced analytics dashboard
-- [ ] Keyboard layout optimization
-- [ ] Multi-language support
-- [ ] Offline mode support
-- [ ] Real-time collaborative typing
-- [ ] Advanced result card sharing
+* [x] Word enrichment (Zipf frequencies)
+* [x] Weighted n-gram generation
+* [x] Snippet generation with synthetic variety
+* [x] Full difficulty feature computation for every snippet
+* [x] Vectorized snippet embeddings (fixed 30-dim engineered vectors)
+* [x] Normalization pipeline (z-score or min-max)
+* [x] FAISS index builder
+* [x] Per-word difficulty vector store
+* [x] Overall two-tower architecture scaffolding
+* [x] Telemetry logging (raw keystrokes)
 
-## Key Metrics & Benchmarks
+## **Frontend Core**
 
-### Performance Targets
+* [x] React + Vite + TypeScript
+* [x] Real-time keystroke capture
+* [x] WPM, accuracy, backspace rate, hesitation spikes
+* [x] Rolling difficulty estimation
+* [x] Session completion & results
+* [x] Beautiful Tailwind UI
+* [x] Integrated snippet retrieval API
 
-| Metric | Target | Current Status |
-|--------|--------|-----------------|
-| API Response Time | < 50ms | ✅ ~10-20ms |
-| FAISS Search Time | < 10ms | ✅ ~3-5ms |
-| Page Load Time | < 2s | ✅ ~1.5s |
-| Typing Latency | < 100ms | ✅ ~20-30ms |
-| Memory Usage | < 500MB | ✅ ~200-300MB |
+## **DevOps / Tools**
 
-### Code Quality
+* [x] Docker containerization
+* [x] Clean repo structure
+* [x] Alembic migrations
+* [x] SQLite local DB browsing workflow
+* [x] Project-wide type safety (TS + Python typing)
 
-| Metric | Target | Current Status |
-|--------|--------|-----------------|
-| Backend Test Coverage | > 70% | 🚧 ~45% |
-| Frontend Test Coverage | > 60% | ⏳ ~10% |
-| Type Safety | 100% | ✅ 100% |
-| Linting Issues | 0 | ✅ 0 |
+---
 
-## Architecture Overview
+# 🚧 **In Progress / Partially Done**
+
+## **RL / Bandits Layer**
+
+* [ ] Contextual bandit with UCB / Thompson
+* [ ] Top-K FAISS candidate → bandit policy
+* [ ] Reward shaping for improvement (ΔWPM, ΔAccuracy)
+* [ ] Safety caps for fatigue
+
+## **Backend Enhancements**
+
+* [ ] Snippet difficulty fine-tuning
+* [ ] Caching around snippet retrieval
+* [ ] Performance tests & DB indexing
+
+## **Frontend Enhancements**
+
+* [ ] Mobile-first UI
+* [ ] Keyboard heatmap visualization
+* [ ] Weak-sequence highlighting
+
+---
+
+# ⏳ **Not Started**
+
+* Leaderboards
+* Social/club mode
+* Achievements & progression
+* Multi-language support
+* Keyboard layout optimizer
+* iOS/Android app
+* Offline PWA mode
+* Real-time multiplayer
+* Personal training plans
+
+---
+
+# **Key Metrics & Benchmarks (Updated)**
+
+| Metric                     | Target         | Current        |
+| -------------------------- | -------------- | -------------- |
+| API response               | < 40ms         | ~10–15ms       |
+| FAISS lookup               | < 5ms          | 2–3ms          |
+| Snippet generation         | n/a            | 20k in ~4s     |
+| Difficulty feature compute | <0.5ms/snippet | ~0.3ms/snippet |
+| Snippet vector norm        | <1ms           | ~0.5ms         |
+| Typing latency             | < 50ms         | 15–25ms        |
+
+---
+
+# **Architecture Overview (Updated)**
 
 ```
-┌─────────────────────────────────────────────────┐
-│           Frontend (React + TypeScript)          │
-│  - TypingZone, WordDisplay, StatsPanel, etc.    │
-│  - Real-time keystroke tracking & metrics       │
-└────────────────┬────────────────────────────────┘
-                 │ HTTP REST API
-                 ▼
-┌─────────────────────────────────────────────────┐
-│    Backend (FastAPI + Python 3.11)              │
-│  ┌───────────────────────────────────────────┐  │
-│  │  API Layer (FastAPI Routers)              │  │
-│  │  - /api/snippets/retrieve                 │  │
-│  │  - /api/sessions                          │  │
-│  │  - /api/users/{id}/stats                  │  │
-│  └───────────────────────────────────────────┘  │
-│  ┌───────────────────────────────────────────┐  │
-│  │  ML Layer                                 │  │
-│  │  - User Encoder → 384-dim vector          │  │
-│  │  - Snippet Encoder (sentence-transformers)│  │
-│  │  - FAISS Vector Store (similarity search) │  │
-│  │  - Difficulty Scorer                      │  │
-│  │  - Two-Tower Ranker                       │  │
-│  └───────────────────────────────────────────┘  │
-│  ┌───────────────────────────────────────────┐  │
-│  │  Database Layer (SQLAlchemy)              │  │
-│  │  - Users, Sessions, Snippets tables       │  │
-│  └───────────────────────────────────────────┘  │
-└────────────────┬────────────────────────────────┘
-                 │ SQL/Protocols
-                 ▼
-        PostgreSQL Database
-        (Supabase / Self-hosted)
+┌──────────────────────────────────────────────┐
+│                React Frontend                │
+│  - Real-time keystroke telemetry             │
+│  - Rolling WPM/accuracy                      │
+│  - Session state + difficulty HUD            │
+└───────────────┬──────────────────────────────┘
+                │ REST API
+                ▼
+┌──────────────────────────────────────────────┐
+│                  FastAPI                     │
+│  ┌────────────────────────────────────────┐  │
+│  │ Snippet Retrieval Pipeline             │  │
+│  │ 1. Build user state U                 │  │
+│  │ 2. FAISS ANN → top-K candidates       │  │
+│  │ 3. Ranking via two-tower network      │  │
+│  │ 4. (Future) RL/Bandit selection       │  │
+│  └────────────────────────────────────────┘  │
+│  ┌────────────────────────────────────────┐  │
+│  │ ML Engine                              │  │
+│  │ - Difficulty feature computation       │  │
+│  │ - N-gram scoring                       │  │
+│  │ - Snippet encoder                      │  │
+│  │ - User GRU encoder (planned)           │  │
+│  │ - RL Bandit Agent (planned)            │  │
+│  └────────────────────────────────────────┘  │
+│  ┌────────────────────────────────────────┐  │
+│  │ Data Layer                             │  │
+│  │ - Snippets (text, features, vectors)   │  │
+│  │ - Users                                │  │
+│  │ - Sessions                             │  │
+│  │ - Raw keystrokes                       │  │
+│  └────────────────────────────────────────┘  │
+└───────────────┬──────────────────────────────┘
+                ▼
+           SQLite / PostgreSQL
 ```
 
-## Data Model
+---
 
-### Core Tables
+# **Data Model (Updated)**
 
-**Users**
+## **Snippets**
+
+Includes ML-ready vectors:
+
 ```sql
-- id (UUID)
-- created_at
-- updated_at
-- email (optional)
+id                  UUID PK
+text                TEXT
+words               JSON
+word_count          INT
+
+features            JSON        -- raw 50-dim metrics
+features_norm       JSON        -- normalized numeric vector
+embedding           JSON        -- final 30-dim embedding
+
+difficulty_score    FLOAT NULL  -- learned later
+created_at          TIMESTAMP
 ```
 
-**Snippets**
+## **Sessions**
+
 ```sql
-- id (UUID)
-- words (TEXT)
-- difficulty (FLOAT)
-- word_length (FLOAT)
-- punctuation_count (INT)
-- rare_letter_ratio (FLOAT)
-- avg_word_frequency (FLOAT)
-- embedding (VECTOR, 384-dim)
-- created_at
+id, user_id
+started_at
+duration_seconds
+words_typed
+errors
+backspaces
+final_wpm
+avg_wpm
+peak_wpm
+accuracy
+starting_difficulty
+ending_difficulty
+avg_difficulty
+keystroke_events JSON
+flow_score
 ```
 
-**Sessions**
-```sql
-- id (UUID)
-- user_id (UUID, FK)
-- started_at (TIMESTAMP)
-- duration_seconds (FLOAT)
-- words_typed (INT)
-- errors (INT)
-- wpm (FLOAT)
-- accuracy (FLOAT)
-- flow_score (FLOAT)
-- difficulty_level (FLOAT)
-- created_at
-```
+## **Telemetry (Raw Keystrokes)**
 
-**Keystroke Events**
-```sql
-- id (UUID)
-- session_id (UUID, FK)
-- timestamp (INT)
-- key (CHAR)
-- is_backspace (BOOL)
-- is_correct (BOOL)
-```
+Fully preserved for GRU training.
 
-## Tech Stack Details
+---
 
-### Frontend
-- **Framework:** React 18+
-- **Language:** TypeScript 5+
-- **Build Tool:** Vite
-- **Styling:** Tailwind CSS 3+
-- **State Management:** React Hooks
-- **API Client:** Fetch API
-- **Deployment:** Vercel
+# **Tech Stack (Updated)**
 
-### Backend
-- **Framework:** FastAPI 0.100+
-- **Language:** Python 3.11
-- **Server:** Uvicorn
-- **ORM:** SQLAlchemy 2.0+
-- **Database:** PostgreSQL 13+
-- **ML Libraries:**
-  - `sentence-transformers` (embeddings)
-  - `faiss-cpu` (vector search)
-  - `scikit-learn` (utilities)
-- **Deployment:** Railway (Docker)
+### **Backend**
 
-### Infrastructure
-- **Database Hosting:** Supabase (PostgreSQL)
-- **Backend Hosting:** Railway
-- **Frontend Hosting:** Vercel
-- **Version Control:** Git/GitHub
+* FastAPI
+* SQLAlchemy
+* Alembic
+* FAISS (ANN search)
+* NumPy / SciPy
+* Redis + RQ
+* wordfreq
+* Custom difficulty engine
+* Python 3.11
 
-## Roadmap
+### **Frontend**
 
-### Phase 1: Foundation (Current - v0.1.0)
-**Status:** 95% Complete
-**Timeline:** Aug 2023 - Oct 2023
+* React
+* TypeScript
+* Vite
+* Tailwind
+* Zustand/Context (state)
 
-**Deliverables:**
-- [x] Core typing application
-- [x] ML-based snippet selection
-- [x] Basic session tracking
-- [x] Docker deployment setup
-- [x] API documentation
+### **ML**
 
-**Known Limitations:**
-- No user authentication
-- No persistent user data across sessions
-- Limited snippet corpus
-- Basic difficulty adjustment
+* Engineered feature pipeline
+* N-gram scoring
+* Two-tower architecture
+* RL bandits
+* GRU keystroke encoder (planned)
 
-### Phase 2: Enhancement (v0.2.0)
-**Status:** Planning Phase
-**Timeline:** Nov 2023 - Jan 2024
-**Estimated Effort:** 120 hours
+---
 
-**Features:**
-- [ ] User authentication (OAuth 2.0 / email)
-- [ ] Persistent user sessions
-- [ ] Session history and statistics dashboard
-- [ ] Advanced difficulty tuning
-- [ ] Mobile-responsive UI improvements
-- [ ] Comprehensive test suite
-- [ ] CI/CD pipeline (GitHub Actions)
-- [ ] Error tracking (Sentry)
+# **Roadmap (Updated)**
 
-**Technical Work:**
-- [ ] Implement JWT authentication
-- [ ] Add user dashboard component
-- [ ] Build statistics aggregation endpoint
-- [ ] Write unit tests (target: 80% coverage)
-- [ ] Setup automated testing
-- [ ] Performance optimization
+## ⭐ **Phase 1 — Engine Rewrite (Completed)**
 
-**Database Changes:**
-- [ ] Add auth tables (users, sessions)
-- [ ] Add indexes for common queries
-- [ ] Add user preferences table
+* Difficulty feature extractor
+* N-gram weighted tables
+* Full snippet generation pipeline
+* Normalized embeddings
+* Database rewrite + migrations
+* FAISS indexing
+* Snippet retrieval engine
 
-### Phase 3: Intelligence (v0.3.0)
-**Status:** Concept Phase
-**Timeline:** Feb 2024 - Apr 2024
-**Estimated Effort:** 160 hours
+## ⭐ **Phase 2 — Two-Tower Model (Core Implemented)**
 
-**Features:**
-- [ ] Fine-tuned user encoder model
-- [ ] Personalized difficulty curves
-- [ ] Adaptive session length
-- [ ] Weak area detection and targeting
-- [ ] Spaced repetition algorithm
-- [ ] Learning analytics dashboard
-- [ ] Progress tracking visualizations
+**User Tower (GRU + structured stats):**
 
-**ML Improvements:**
-- [ ] Collect training data from sessions
-- [ ] Train custom user encoder model
-- [ ] Implement active learning feedback loop
-- [ ] Add temporal model (fatigue detection)
-- [ ] Multi-armed bandit for exploration/exploitation
+* [x] GRU keystroke encoder
+* [x] Structured user stats encoder
+* [ ] Fatigue modeling (Future)
+* [ ] Burst detection (Future)
 
-**Database Additions:**
-- [ ] User performance history table
-- [ ] Model metrics and evaluation table
+**Snippet Tower:**
 
-### Phase 4: Community (v0.4.0)
-**Status:** Concept Phase
-**Timeline:** May 2024 - Jul 2024
-**Estimated Effort:** 140 hours
+* [x] 30-d difficulty vector
+* [ ] Optional character CNN
 
-**Features:**
-- [ ] Leaderboards (global, friends)
-- [ ] Social sharing of results
-- [ ] Multiplayer typing challenges
-- [ ] Community typing challenges/events
-- [ ] Achievement system/badges
-- [ ] Replay functionality
-- [ ] Result card customization
+**Joint Scoring:**
 
-**Technical Requirements:**
-- [ ] WebSocket support for real-time updates
-- [ ] Rate limiting and abuse prevention
-- [ ] Analytics tracking
-- [ ] Social graph implementation
+* [x] Bilinear head (User ⨂ Snippet)
 
-### Phase 5: Expansion (v1.0.0)
-**Status:** Concept Phase
-**Timeline:** Aug 2024+
-**Estimated Effort:** 200+ hours
+## ⭐ **Phase 3 — RL + Curriculum Learning**
 
-**Features:**
-- [ ] Multi-language support
-- [ ] Keyboard layout optimization
-- [ ] Custom snippet uploads
-- [ ] Typing test standards (WPM certifications)
-- [ ] Mobile native apps (React Native)
-- [ ] Offline mode support
-- [ ] API for third-party integrations
-- [ ] Advanced analytics export
+* Contextual bandit for snippet difficulty
+* UCB / Thompson sampling
+* Reward shaping
+* FAISS top-K → Bandit policy
+* Real-time adaptation
 
-## Development Best Practices
+## ⭐ **Phase 4 — User Platform**
 
-### Code Quality
-- Use type hints everywhere (Python & TypeScript)
-- Follow Black formatting (Python) and Prettier (JS/TS)
-- Maintain > 70% test coverage
-- Use pre-commit hooks for linting
+* Auth
+* Persistent history
+* Dashboards
+* Weak area analytics
+* Long-term progression
 
-### Version Control
-- Use semantic versioning (semver)
-- Descriptive commit messages
-- Feature branches for new work
-- Pull request reviews before merging
+## ⭐ **Phase 5 — Community Layer**
 
-### Documentation
-- Keep README up-to-date
-- Document API changes
-- Add docstrings to complex functions
-- Include examples in docs
+* Leaderboards
+* Clubs
+* Social challenges
+* Weekly events
+* Multiplayer typing races
 
-### Performance
-- Profile before optimizing
-- Monitor key metrics in production
-- Set performance budgets
-- Track bundle size
+## ⭐ **Phase 6 — Expansion**
 
-## Known Issues & Limitations
+* Languages: EN → multi-language
+* Keyboard layouts
+* Mobile app
+* Offline mode
+* API for 3rd party platforms
 
-### Current Limitations
+---
 
-1. **Snippet Quality:** Snippets are random combinations of common words, not curated passages
-2. **Difficulty Scaling:** Simple heuristic-based scoring, not learned from user feedback
-3. **User Persistence:** No proper user accounts, sessions are anonymous
-4. **Accuracy Calculation:** Doesn't handle word boundaries well (character-based)
-5. **Mobile Experience:** Not optimized for mobile typing
-6. **Session Flexibility:** Fixed snippet length, no pause/resume
+# **Known Issues / Current Limitations**
 
-### Performance Considerations
+* Snippet text is synthetic, not narrative
+* No RL exploration yet (only ranking)
+* GRU user tower not yet implemented
+* No authentication
+* Limited mobile experience
+* No leaderboards or community layer
 
-1. **FAISS Index Memory:** Grows with corpus size (~1MB per 1000 snippets)
-2. **Database Queries:** Not heavily indexed, may slow with large user base
-3. **Frontend Bundle:** Currently ~200KB (before gzip)
-4. **API Latency:** Network overhead dominates vs. processing time
+---
 
-## Success Metrics
+# **Success Metrics**
 
-### User Engagement
-- Daily active users (target: 1000+ by v0.3)
-- Session completion rate (target: > 80%)
-- Average session duration (target: > 5 minutes)
-- Return rate (target: > 40% within 7 days)
+### Learning Metrics
 
-### Application Quality
-- API uptime (target: > 99.5%)
-- Page load time (target: < 2s)
-- Error rate (target: < 0.1%)
-- User satisfaction (NPS: target > 40)
+* WPM improvement over sessions
+* Accuracy stability
+* Fatigue prediction quality
+* RL reward growth
 
-### Business
-- Cost per user (target: < $0.01/month)
-- Infrastructure costs (target: < $100/month)
-- Development velocity (target: 100 hours/month)
+### System Metrics
 
-## Contributing
+* Latency < 30ms
+* FAISS lookup < 3ms
+* Memory < 300MB
 
-Contributions welcome! Please:
-1. Fork the repository
-2. Create feature branch: `git checkout -b feature/new-feature`
-3. Commit changes: `git commit -m "Add feature description"`
-4. Push branch: `git push origin feature/new-feature`
-5. Open pull request
+---
 
-See DEVELOPMENT.md for detailed guidelines.
-
-## Support & Contact
-
-- **GitHub Issues:** Report bugs and suggest features
-- **Discussions:** Ask questions and share ideas
-- **Documentation:** Check `/docs/` folder for comprehensive guides
-
-## License
-
-[Add your license here]
-
-## Changelog
-
-### v0.1.0 (October 2023)
-- Initial MVP release
-- Core typing application
-- ML-based snippet selection
-- FastAPI + React stack
-- Docker deployment
-
-### Future Versions
-See roadmap above for planned features and timelines.
-
+# **Want me to generate a README version, or separate docs (e.g., `ML_ARCHITECTURE.md` and `SYSTEM_DESIGN.md`)?**

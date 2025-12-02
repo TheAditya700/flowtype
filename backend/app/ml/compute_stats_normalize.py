@@ -1,5 +1,6 @@
 import numpy as np
 import json
+from torch import nn
 
 def compute_feature_stats(feature_matrix):
     stats = {}

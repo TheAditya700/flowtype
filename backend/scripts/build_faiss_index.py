@@ -17,11 +17,12 @@ def build_index():
     session = Session()
     
     logger.info("Fetching all snippets from the database...")
-    snippets = session.query(Snippet).filter(Snippet.embedding.isnot(None)).all()
+    # Use processed_embedding for the index
+    snippets = session.query(Snippet).filter(Snippet.processed_embedding.isnot(None)).all()
     session.close()
     
     if not snippets:
-        logger.warning("No snippets with embeddings found in the database. Run feature extraction first.")
+        logger.warning("No snippets with processed_embeddings found. Run snippet vectorization first.")
         return
 
     logger.info(f"Found {len(snippets)} snippets. Building index...")
@@ -30,8 +31,8 @@ def build_index():
     metadata = []
     
     for snippet in snippets:
-        # Snippet.embedding is stored as a list of floats (JSON)
-        emb_list = snippet.embedding
+        # Use processed_embedding
+        emb_list = snippet.processed_embedding
         if not emb_list:
             continue
             
@@ -40,7 +41,7 @@ def build_index():
             "id": str(snippet.id),
             "words": snippet.words,
             "difficulty": snippet.difficulty_score,
-            "embedding": emb_list # Store embedding for Two-Tower ranking
+            "embedding": emb_list # Store PROCESSED embedding for Two-Tower ranking
         })
 
     if not embeddings:

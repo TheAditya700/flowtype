@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.models.schema import SnippetRetrieveRequest, SnippetResponse
+from app.models.db_models import User
 from app.ml.user_encoder import get_user_embedding
 from app.ml.ranker import rank_snippets
 from typing import List, Dict, Any
@@ -42,31 +43,34 @@ def retrieve_snippets(
             wpm_map[str(w)] = round(wpm, 2)
         return wpm_map
 
-    # 1. Encode user state
-    user_embedding = get_user_embedding(request.user_state)
+    # 1. Fetch User Stats from DB (Long Term Context)
+    user_features = {}
+    if request.user_state.user_id:
+        user = db.query(User).filter(User.id == request.user_state.user_id).first()
+        if user:
+            user_features = user.features or {}
+
+    # 2. Encode user state
+    user_embedding = get_user_embedding(request.user_state, user_features=user_features)
     
-    # 2. Access the vector store from the app state and search
+    # 3. Access the vector store from the app state and search
     vector_store = req.app.state.vector_store
-    # Relaxed difficulty filtering to ensure we have enough candidates
-    # Range: ±2.0 from current difficulty allows for progressive challenge
+    
+    # Pure embedding search (difficulty filtering removed)
     current_diff = getattr(request.user_state, "currentDifficulty", 5.0)
-    difficulty_min = max(1.0, current_diff - 2.0)
-    difficulty_max = min(10.0, current_diff + 2.0)
     
     candidate_snippets = vector_store.search(
         query_vector=user_embedding,
-        k=50,  # Retrieve more candidates for better filtering
-        difficulty_min=difficulty_min,
-        difficulty_max=difficulty_max
+        k=50,
     )
 
-    # 3. Rank snippets
+    # 4. Rank snippets
     ranked_snippets = rank_snippets(user_embedding, candidate_snippets, current_diff)
     
     if not ranked_snippets:
         raise HTTPException(status_code=404, detail="No suitable snippets found.")
     
-    # 3.5. Filter out recently shown snippets and current snippet to avoid repetition
+    # 4.5. Filter out recently shown snippets and current snippet to avoid repetition
     recent_ids = getattr(request.user_state, "recentSnippetIds", None) or []
     current_id = request.current_snippet_id
     
@@ -81,13 +85,13 @@ def retrieve_snippets(
     if not filtered_snippets:
         filtered_snippets = ranked_snippets
         
-    # 4. Format top 1 snippet only
+    # 5. Format top 1 snippet only
     top_snippet = None
     if filtered_snippets:
         s = filtered_snippets[0]
         top_snippet = {"id": s.get("id"), "words": s.get("words"), "difficulty": s.get("difficulty")}
 
-    # 5. Compute rolling WPM windows from optional keystroke timestamps
+    # 6. Compute rolling WPM windows from optional keystroke timestamps
     timestamps = getattr(request.user_state, "keystroke_timestamps", None)
     if timestamps:
         wpm_windows = compute_rolling_wpm(timestamps)
@@ -97,3 +101,4 @@ def retrieve_snippets(
         wpm_windows = {str(w): round(base_wpm, 2) for w in [15, 30, 45, 60]}
 
     return {"snippet": top_snippet, "wpm_windows": wpm_windows}
+

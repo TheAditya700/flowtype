@@ -39,34 +39,31 @@ class VectorStore:
     def search(
         self, 
         query_vector: np.ndarray, 
-        k: int = 50,
-        difficulty_min: float = 1.0,
-        difficulty_max: float = 10.0
+        k: int = 50
     ) -> list[dict]:
         """
-        Search for similar snippets with difficulty filtering
+        Search for similar snippets using FAISS (L2 distance) in shared embedding space.
         Returns list of {snippet_id, words, difficulty, distance}
         """
+        if not self.index or self.index.ntotal == 0:
+            return []
+
         # Search in FAISS
+        # We request k directly since we aren't filtering anymore
         distances, indices = self.index.search(
             query_vector.reshape(1, -1).astype('float32'), 
-            k * 3
+            k
         )
         
-        # Filter by difficulty and return top k
         results = []
         for dist, idx in zip(distances[0], indices[0]):
             if idx < 0 or idx >= len(self.metadata):
                 continue
             
             snippet = self.metadata[idx]
-            if difficulty_min <= snippet['difficulty'] <= difficulty_max:
-                results.append({
-                    **snippet,
-                    'distance': float(dist)
-                })
-            
-            if len(results) >= k:
-                break
+            results.append({
+                **snippet,
+                'distance': float(dist)
+            })
         
         return results

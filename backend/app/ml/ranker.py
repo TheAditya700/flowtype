@@ -1,13 +1,32 @@
 import numpy as np
 import torch
 from typing import List, Dict, Any
-from app.ml.architecture import TwoTowerRanker
 from app.config import settings
 from app.ml.user_encoder import get_user_embedding
+from torch import nn
 
 # global lazy-loaded model
 _RANKER_MODEL = None
 
+class TwoTowerRanker(nn.Module):
+    """
+    Scores a (User, Snippet) pair.
+    """
+    def __init__(self, embedding_dim: int = 30):
+        super().__init__()
+        # A simple bilinear layer to allow for interaction weighting
+        # score = x1 * W * x2 + b
+        self.bilinear = nn.Bilinear(embedding_dim, embedding_dim, 1)
+        
+    def forward(self, user_emb: torch.Tensor, snippet_emb: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            user_emb: (Batch, Dim)
+            snippet_emb: (Batch, Dim)
+        Returns:
+            score: (Batch, 1)
+        """
+        return self.bilinear(user_emb, snippet_emb)
 
 # ---------------------------------------------------------
 # Load / init the Two-Tower model
@@ -30,7 +49,7 @@ def get_ranker_model():
 # Ranking Function (new pipeline)
 # ---------------------------------------------------------
 def rank_snippets(
-    user_state: Dict[str, Any],
+    user_embedding: np.ndarray,
     candidates: List[dict],
     target_difficulty: float,
     exploration_bonus: float = 0.0,
@@ -40,7 +59,7 @@ def rank_snippets(
     Otherwise falls back to difficulty + heuristic score.
 
     Inputs:
-      user_state        – recent keystrokes, stats, WPM history, etc.
+      user_embedding    – pre-computed user vector (numpy array)
       candidates        – list of snippet dicts from DB/FAISS
       target_difficulty – desired difficulty level
       exploration_bonus – optional RL exploration weight
@@ -53,9 +72,8 @@ def rank_snippets(
         return []
 
     # -----------------------------------------------------
-    # Step 1: Compute User Embedding (GRU + stats tower)
+    # Step 1: Prepare User Tensor
     # -----------------------------------------------------
-    user_embedding = get_user_embedding(user_state) # type: ignore
     user_tensor = torch.tensor(user_embedding, dtype=torch.float32).unsqueeze(0)
 
     # -----------------------------------------------------
@@ -94,7 +112,30 @@ def rank_snippets(
             })
 
     else:
-        raise ValueError("Snippet embeddings missing; cannot use Two-Tower ranker.")
+        # Fallback: Heuristic ranking based on calibrated difficulty
+        # This path is taken if embeddings are missing (e.g., during init/migration)
+        # We use a "Zone of Proximal Development" strategy: 
+        # Rank snippets closest to the user's current difficulty level.
+        
+        # Extract target difficulty (default to 5.0 if missing)
+        # In the new signature, we don't have user_state dict, but we have target_difficulty passed in.
+        
+        for cand in candidates:
+            # difficulty_score is the calibrated 1-10 value
+            diff = cand.get("difficulty", 5.0) 
+            dist = abs(diff - target_difficulty)
+            
+            # Score: Higher is better. Max score 1.0 when dist is 0.
+            score = 1.0 / (1.0 + dist)
+            
+            ranked.append({
+                **cand,
+                "score": score,
+                "debug_info": {
+                    "mode": "difficulty_heuristic",
+                    "diff_dist": dist
+                }
+            })
 
     # -----------------------------------------------------
     # Step 3: Sort (descending)

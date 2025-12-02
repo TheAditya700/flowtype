@@ -1,8 +1,10 @@
 import numpy as np
+import torch
 from sqlalchemy.orm import Session
 from app.database import engine
 from app.models.db_models import Snippet
 from app.ml.difficulty_features import compute_difficulty_features
+from app.ml.snippet_tower import get_snippet_model
 
 
 # ----- FIXED FEATURE ORDER (FAISS stable) -----
@@ -81,13 +83,11 @@ def normalize_matrix(X: np.ndarray, method: str = "zscore") -> np.ndarray:
 def vectorize_and_update_all_snippets(normalize: bool = True, method: str = "zscore"):
     """
     Loads all snippets, converts raw feature dicts → vectors,
-    normalizes them, and writes both normalized features + embeddings
-    back into the snippet table.
-
-    Embedding = normalized vector (can later replace w/ PCA/MLP).
+    normalizes them, passes them through Snippet Tower, 
+    and writes both normalized features + processed embeddings back into DB.
     """
-
     session = Session(bind=engine)
+    model = get_snippet_model()
 
     # Step 1: Load all snippet rows
     rows = session.query(Snippet).all()
@@ -110,17 +110,25 @@ def vectorize_and_update_all_snippets(normalize: bool = True, method: str = "zsc
         X_norm = normalize_matrix(X, method=method)
     else:
         X_norm = X.copy()
+        
+    # Step 4: Pass through Snippet Tower
+    X_tensor = torch.tensor(X_norm, dtype=torch.float32)
+    with torch.no_grad():
+        processed_embeddings = model(X_tensor).numpy()
 
-    # Step 4: Save normalized vectors + embeddings back to DB
+    # Step 5: Save back to DB
     for i, snip in enumerate(rows):
-        norm_vec = X_norm[i].tolist()  # convert to list for JSON
+        norm_vec = X_norm[i].tolist()
+        proc_vec = processed_embeddings[i].tolist()
+        
         snip.normalized_features = norm_vec
-        snip.embedding = norm_vec  # currently same; later can be PCA/MLP
+        snip.embedding = norm_vec         # Raw normalized features (legacy/debug)
+        snip.processed_embedding = proc_vec # Output of Snippet Tower (used for search)
 
     session.commit()
     session.close()
 
-    print(f"✓ Updated {len(rows)} snippets with normalized features + embeddings.")
+    print(f"✓ Updated {len(rows)} snippets with normalized features + processed embeddings.")
 
 if __name__ == "__main__":
     vectorize_and_update_all_snippets(

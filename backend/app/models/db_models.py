@@ -1,8 +1,12 @@
 import uuid
-from sqlalchemy import Column, String, Integer, Float, DateTime, ForeignKey, Index, JSON, UUID, TypeDecorator
+from sqlalchemy import Column, String, Integer, Float, DateTime, ForeignKey, Index, JSON, TypeDecorator, DateTime, ForeignKey, func, Boolean
 from sqlalchemy.sql import func
 from app.database import Base
+from sqlalchemy.orm import relationship
 
+# ------------------------------------------------------
+# db_models.py (rewritten for Stateful GRU + Telemetry)
+# ------------------------------------------------------
 
 class GUID(TypeDecorator):
     """Platform-independent GUID type that uses CHAR(32) on SQLite and UUID on PostgreSQL."""
@@ -33,6 +37,9 @@ class User(Base):
     created_at = Column(DateTime, default=func.now())
     last_active = Column(DateTime, default=func.now(), onupdate=func.now())
 
+    # Long-term feature storage (serialized UserFeatureExtractor)
+    features = Column(JSON, default={})
+
 
 class Snippet(Base):
     __tablename__ = "snippets"
@@ -57,6 +64,9 @@ class Snippet(Base):
     # Final embedding vector (e.g., PCA/UMAP/MLP output, float list)
     embedding = Column(JSON, nullable=True)
 
+    # Output of Snippet Tower MLP (used for search)
+    processed_embedding = Column(JSON, nullable=True)
+
     # Difficulty score (optional model-generated scalar)
     difficulty_score = Column(Float, nullable=True)
 
@@ -68,47 +78,93 @@ class Snippet(Base):
 
 
 
-
+# -----------------------------------------
+# Typing Session
+# -----------------------------------------
 class TypingSession(Base):
     __tablename__ = "typing_sessions"
-    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
-    user_id = Column(GUID(), ForeignKey("users.id"), nullable=True)
-    started_at = Column(DateTime, default=func.now())
-    duration_seconds = Column(Float, nullable=False)
-    words_typed = Column(Integer, nullable=False)
-    characters_typed = Column(Integer, nullable=False)
-    errors = Column(Integer, nullable=False)
-    backspaces = Column(Integer, nullable=False)
-    final_wpm = Column(Float, nullable=False)
-    avg_wpm = Column(Float, nullable=False)
-    peak_wpm = Column(Float, nullable=False)
-    accuracy = Column(Float, nullable=False)
-    starting_difficulty = Column(Float, nullable=False)
-    ending_difficulty = Column(Float, nullable=False)
-    avg_difficulty = Column(Float, nullable=False)
-    keystroke_events = Column(JSON)
+
+    id = Column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    user_id = Column(String, nullable=True, index=True)
+
+    duration_seconds = Column(Float)
+    words_typed = Column(Integer)
+    errors = Column(Integer)
+    backspaces = Column(Integer)
+
+    final_wpm = Column(Float)
+    accuracy = Column(Float)
+
+    starting_difficulty = Column(Float)
+    ending_difficulty = Column(Float)
+    avg_difficulty = Column(Float)
+
     flow_score = Column(Float)
 
+    # RL reward
+    reward = Column(Float, nullable=True)
+
+    created_at = Column(DateTime, server_default=func.now())
+
+    # relationships
+    keystrokes = relationship("KeystrokeEventDB", back_populates="session")
+    snippet_usages = relationship("SnippetUsage", back_populates="session")
+
+
+# -----------------------------------------
+# Per-Keystroke Storage (for GRU training)
+# -----------------------------------------
+class KeystrokeEventDB(Base):
+    __tablename__ = "keystroke_events"
+
+    id = Column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    session_id = Column(String, ForeignKey("typing_sessions.id"))
+    timestamp = Column(Integer)
+    key = Column(String)
+    is_backspace = Column(Boolean)
+    is_correct = Column(Boolean)
+
+    session = relationship("TypingSession", back_populates="keystrokes")
+
+
+# -----------------------------------------
+# Per-Snippet Usage Metadata (for ranking/RL)
+# -----------------------------------------
 class SnippetUsage(Base):
     __tablename__ = "snippet_usage"
-    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
-    session_id = Column(GUID(), ForeignKey("typing_sessions.id"))
-    user_id = Column(GUID(), ForeignKey("users.id"), nullable=True)
-    snippet_id = Column(GUID(), ForeignKey("snippets.id"))
-    started_at = Column(DateTime, default=func.now())
-    completed_at = Column(DateTime)
+
+    id = Column(String, primary_key=True)
+    session_id = Column(String, ForeignKey("typing_sessions.id"), index=True)
+    snippet_id = Column(String, index=True)
+
     user_wpm = Column(Float)
     user_accuracy = Column(Float)
     snippet_position = Column(Integer)
+
     difficulty_snapshot = Column(Float)
 
+    created_at = Column(DateTime, server_default=func.now())
 
+    session = relationship("TypingSession", back_populates="snippet_usages")
+
+
+# -----------------------------------------
+# Telemetry Storage (raw logs for training)
+# -----------------------------------------
 class TelemetrySnippetRaw(Base):
     __tablename__ = "telemetry_snippet_raw"
-    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
-    received_at = Column(DateTime, default=func.now())
-    # store the full raw payload for later processing
-    payload = Column(JSON, nullable=False)
-    user_id = Column(GUID(), ForeignKey("users.id"), nullable=True)
-    session_id = Column(GUID(), ForeignKey("typing_sessions.id"), nullable=True)
-    source = Column(String, nullable=True)
+
+    id = Column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+    user_id = Column(String, index=True)
+    snippet_id = Column(String, index=True)
+    session_id = Column(String, nullable=True)
+
+    # the full telemetry payload (large but durable)
+    payload = Column(JSON)
+
+    # optional model fields useful for online learning
+    model_score = Column(Float)
+    reward_estimate = Column(Float)
+
+    source = Column(String)
+    created_at = Column(DateTime, server_default=func.now())
