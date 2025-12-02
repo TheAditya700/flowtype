@@ -42,14 +42,18 @@ function App() {
 
   const isFetching = useRef(false);
 
-  const fetchMoreSnippets = async (state: UserState, count: number = 1) => {
+  const fetchMoreSnippets = async (state: UserState, count: number = 1, overrideRecentIds?: string[]) => {
     if (isFetching.current) return;
     isFetching.current = true;
     try {
       const fetchedInBatch: string[] = [];
       for (let i = 0; i < count; i++) {
-        const excludeIds = [...recentSnippetIds, ...fetchedInBatch];
+        // Use override if provided, else current state
+        const currentRecentIds = overrideRecentIds || recentSnippetIds;
+        const excludeIds = [...currentRecentIds, ...fetchedInBatch];
+        // Explicitly attach recentSnippetIds to state sent to backend
         const stateWithRecent = { ...state, recentSnippetIds: excludeIds };
+        
         const currentId = snippetQueue.length > 0 ? snippetQueue[0]?.id : undefined;
         const snippet = await fetchNextSnippet(stateWithRecent, currentId);
         if (!snippet) {
@@ -127,14 +131,13 @@ function App() {
     setUserState(newUserState);
     
     // Add to recent IDs
-    setRecentSnippetIds(prev => {
-        const updated = [...prev, currentSnippet.id];
-        return updated.slice(-10);
-    });
+    const updatedRecentIds = [...recentSnippetIds, currentSnippet.id].slice(-10);
+    setRecentSnippetIds(updatedRecentIds);
 
     // Shift queue
     setSnippetQueue(prev => prev.slice(1));
-    fetchMoreSnippets(newUserState, 1);
+    // Fetch with updated exclusion list to prevent immediate repeat
+    fetchMoreSnippets(newUserState, 1, updatedRecentIds);
 
     // Construct full session payload
     // We treat each snippet completion as a "session" for now to get granular updates

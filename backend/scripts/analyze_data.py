@@ -48,8 +48,11 @@ def analyze_sessions():
                     print("     WARNING: IMMEDIATE REPEAT DETECTED!")
 
         # 3. Check User Features
-        # Frontend hardcodes "test_user_default"
-        user_id_to_check = "test_user_default" 
+        # Dynamically find the most recent user ID from the last session
+        user_id_to_check = "test_user_default"
+        if last_15 and last_15[-1].session:
+             user_id_to_check = last_15[-1].session.user_id or "test_user_default"
+             
         user = session.get(User, user_id_to_check)
         if user and user.features:
             print(f"\nUser Stats for {user_id_to_check}:")

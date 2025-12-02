@@ -39,6 +39,9 @@ class UserState(BaseModel):
 
     # Recent keystrokes (last ~50)
     recentKeystrokes: Optional[List[KeystrokeEvent]] = None
+    
+    # History for filtering
+    recentSnippetIds: Optional[List[str]] = None
 
 
 # ------------------------------------------------------
