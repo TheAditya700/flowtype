@@ -96,38 +96,45 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
         # -----------------------------------------------------
         if request.user_id:
             user = db.query(User).filter(User.id == request.user_id).first()
-            if user:
-                # Load extractor from JSON (or init new)
-                extractor = UserFeatureExtractor.from_dict(user.features or {})
-                
-                # Prepare session dict for extractor
-                # Note: UserFeatureExtractor expects dict-based events
-                events_dicts = [
-                    {
-                        "key": k.key,
-                        "is_backspace": k.isBackspace,
-                        "is_correct": k.isCorrect,
-                        "timestamp": k.timestamp
-                    } 
-                    for k in request.keystrokeData
-                ]
-                
-                session_data = {
-                    'keystroke_events': events_dicts,
-                    'wpm': request.wpm,
-                    'accuracy': request.accuracy,
-                    'snippet_difficulty': request.difficultyLevel,
-                    'completed': True,  # Submitting a session implies completion/submission
-                    'quit_progress': 1.0
-                }
-                
-                # Update and Save
-                extractor.update_from_session(session_data)
-                user.features = extractor.to_dict()
-                
-                # Update last active
-                user.last_active = func.now()
+            
+            # Create user if not exists (lazy creation for no-auth flow)
+            if not user:
+                user = User(id=request.user_id)
                 db.add(user)
+                # Flush to ensure ID is available if needed, though we set it manually
+                db.flush() 
+
+            # Load extractor from JSON (or init new)
+            extractor = UserFeatureExtractor.from_dict(user.features or {})
+            
+            # Prepare session dict for extractor
+            # Note: UserFeatureExtractor expects dict-based events
+            events_dicts = [
+                {
+                    "key": k.key,
+                    "is_backspace": k.isBackspace,
+                    "is_correct": k.isCorrect,
+                    "timestamp": k.timestamp
+                } 
+                for k in request.keystrokeData
+            ]
+            
+            session_data = {
+                'keystroke_events': events_dicts,
+                'wpm': request.wpm,
+                'accuracy': request.accuracy,
+                'snippet_difficulty': request.difficultyLevel,
+                'completed': True,  # Submitting a session implies completion/submission
+                'quit_progress': 1.0
+            }
+            
+            # Update and Save
+            extractor.update_from_session(session_data)
+            user.features = extractor.to_dict()
+            
+            # Update last active
+            user.last_active = func.now()
+            db.add(user)
 
         db.commit()
         db.refresh(db_session)

@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     embedding_dim: int = 30
     
     # API
-    cors_origins: list[str] = ["http://localhost:5173"]
+    cors_origins: list[str] = ["*"]
     
     class Config:
         env_file = ".env"

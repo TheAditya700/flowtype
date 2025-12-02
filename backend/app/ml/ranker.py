@@ -122,7 +122,12 @@ def rank_snippets(
         
         for cand in candidates:
             # difficulty_score is the calibrated 1-10 value
-            diff = cand.get("difficulty", 5.0) 
+            diff = cand.get("difficulty")
+            
+            if diff is None:
+                print(f"[WARNING] Snippet {cand.get('id')} has None difficulty. Defaulting to 5.0")
+                diff = 5.0
+                
             dist = abs(diff - target_difficulty)
             
             # Score: Higher is better. Max score 1.0 when dist is 0.

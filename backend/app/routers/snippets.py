@@ -61,7 +61,7 @@ def retrieve_snippets(
     
     candidate_snippets = vector_store.search(
         query_vector=user_embedding,
-        k=50,
+        k=200,
     )
 
     # 4. Rank snippets
@@ -81,10 +81,6 @@ def retrieve_snippets(
     
     filtered_snippets = [s for s in ranked_snippets if str(s.get("id")) not in exclude_ids]
     
-    # If all top snippets were filtered, fallback to showing them anyway (better UX than nothing)
-    if not filtered_snippets:
-        filtered_snippets = ranked_snippets
-        
     # 5. Format top 1 snippet only
     top_snippet = None
     if filtered_snippets:

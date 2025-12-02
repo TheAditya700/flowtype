@@ -4,6 +4,7 @@ import StatsPanel from './components/StatsPanel';
 import { fetchNextSnippet, saveSession } from './api/client';
 import { UserState, SnippetLog, KeystrokeEvent, SessionCreateRequest, SnippetResult } from './types';
 import { RotateCcw } from 'lucide-react';
+import { v4 as uuidv4 } from 'uuid'; // Import uuid for unique ID generation
 
 interface QueuedSnippet {
   id: string;
@@ -14,13 +15,22 @@ interface QueuedSnippet {
 function App() {
   const [snippetQueue, setSnippetQueue] = useState<QueuedSnippet[]>([]);
   const [recentSnippetIds, setRecentSnippetIds] = useState<string[]>([]);
-  const [userState, setUserState] = useState<UserState>({
-    rollingWpm: 0,
-    rollingAccuracy: 1,
-    backspaceRate: 0,
-    hesitationCount: 0,
-    recentErrors: [],
-    currentDifficulty: 5,
+  const [userState, setUserState] = useState<UserState>(() => {
+    // Initialize user ID from localStorage or generate a new one
+    let userId = localStorage.getItem('flowtype_user_id');
+    if (!userId) {
+      userId = uuidv4();
+      localStorage.setItem('flowtype_user_id', userId);
+    }
+    return {
+      user_id: userId, // Set the persistent user ID here
+      rollingWpm: 0,
+      rollingAccuracy: 1,
+      backspaceRate: 0,
+      hesitationCount: 0,
+      recentErrors: [],
+      currentDifficulty: 5,
+    };
   });
   const [snippetLogs, setSnippetLogs] = useState<SnippetLog[]>([]);
   const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
@@ -40,12 +50,14 @@ function App() {
       for (let i = 0; i < count; i++) {
         const excludeIds = [...recentSnippetIds, ...fetchedInBatch];
         const stateWithRecent = { ...state, recentSnippetIds: excludeIds };
-        const currentId = snippetQueue[0]?.id;
+        const currentId = snippetQueue.length > 0 ? snippetQueue[0]?.id : undefined;
         const snippet = await fetchNextSnippet(stateWithRecent, currentId);
-        if (snippet) {
-          setSnippetQueue(prev => [...prev, snippet]);
-          fetchedInBatch.push(snippet.id);
+        if (!snippet) {
+          console.log("No new snippet found after filtering. Stopping fetch.");
+          break; // Stop fetching if no new snippet is found
         }
+        setSnippetQueue(prev => [...prev, snippet]);
+        fetchedInBatch.push(snippet.id);
       }
     } catch (error) {
       console.error("Error fetching snippets:", error);
@@ -86,6 +98,8 @@ function App() {
 
     console.log("Snippet completed:", stats);
 
+    const safeDifficulty = currentSnippet.difficulty ?? 5.0;
+
     // Create log
     const log: SnippetLog = {
         snippet_id: currentSnippet.id,
@@ -93,7 +107,7 @@ function App() {
         completed_at: new Date().toISOString(),
         wpm: stats.wpm,
         accuracy: stats.accuracy,
-        difficulty: currentSnippet.difficulty
+        difficulty: safeDifficulty
     };
 
     setSnippetLogs(prev => [...prev, log]);
@@ -128,20 +142,20 @@ function App() {
         snippet_id: currentSnippet.id,
         wpm: stats.wpm,
         accuracy: stats.accuracy,
-        difficulty: currentSnippet.difficulty,
+        difficulty: safeDifficulty,
         started_at: stats.startedAt.getTime(),
         completed_at: Date.now()
     };
 
     const sessionPayload: SessionCreateRequest = {
-        user_id: "test_user_default", // Placeholder until Auth
+        user_id: userState.user_id,
         durationSeconds: stats.duration,
         wordsTyped: currentSnippet.words.length, // or calculate from keystrokes
         keystrokeData: stats.keystrokeEvents,
         wpm: stats.wpm,
         accuracy: stats.accuracy,
         errors: stats.errors,
-        difficultyLevel: currentSnippet.difficulty,
+        difficultyLevel: safeDifficulty,
         snippets: [snippetResult],
         user_state: userState, // Send PREVIOUS state so backend knows context? Or new? Usually previous state + new events -> new state.
         flowScore: 0.0 // Calculated on backend usually?

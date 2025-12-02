@@ -12,6 +12,7 @@ export interface KeystrokeEvent {
 }
 
 export interface UserState {
+  user_id?: string;
   rollingWpm: number;
   rollingAccuracy: number;
   backspaceRate: number;
