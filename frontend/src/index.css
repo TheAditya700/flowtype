@@ -2,6 +2,60 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  /* Default (Dark/Flow) */
+  --bg-color: #111827;
+  --text-color: #f3f4f6;
+  --text-subtle: #9ca3af;
+  --primary-color: #60a5fa; /* blue-400 */
+  --error-color: #ef4444;
+  --success-color: #4ade80;
+  --container-bg: #1f2937;
+}
+
+[data-theme='tokyo-night'] {
+  --bg-color: #1a1b26;
+  --text-color: #a9b1d6;
+  --text-subtle: #565f89;
+  --primary-color: #7aa2f7;
+  --error-color: #f7768e;
+  --success-color: #9ece6a;
+  --container-bg: #24283b;
+}
+
+[data-theme='catppuccin'] {
+  --bg-color: #1e1e2e;
+  --text-color: #cdd6f4;
+  --text-subtle: #6c7086;
+  --primary-color: #cba6f7; /* Mauve */
+  --error-color: #f38ba8;
+  --success-color: #a6e3a1;
+  --container-bg: #313244;
+}
+
+[data-theme='nord'] {
+  --bg-color: #2e3440;
+  --text-color: #eceff4;
+  --text-subtle: #4c566a;
+  --primary-color: #88c0d0;
+  --error-color: #bf616a;
+  --success-color: #a3be8c;
+  --container-bg: #3b4252;
+}
+
+[data-theme='gruvbox'] {
+  --bg-color: #282828;
+  --text-color: #ebdbb2;
+  --text-subtle: #928374;
+  --primary-color: #d79921; /* Yellow */
+  --error-color: #cc241d;
+  --success-color: #98971a;
+  --container-bg: #3c3836;
+}
+
 body {
-  font-family: 'Inter', sans-serif;
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  font-family: 'JetBrains Mono', 'Roboto Mono', monospace;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
