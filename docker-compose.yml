@@ -1,8 +1,28 @@
 version: '3.8'
 
 services:
+  # ----------------------------------------------------------------
+  # Core Services
+  # ----------------------------------------------------------------
+  
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=flowtype
+      - POSTGRES_PASSWORD=flowtype
+      - POSTGRES_DB=flowtype
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flowtype"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   redis:
-    image: redis:7
+    image: redis:7-alpine
     ports:
       - "6379:6379"
     healthcheck:
@@ -12,44 +32,72 @@ services:
       retries: 5
 
   backend:
-    build: ./backend
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=sqlite:///./flowtype.db
+      # Switch to postgres by uncommenting:
+      # - DATABASE_URL=postgresql://flowtype:flowtype@postgres:5432/flowtype
+      - DATABASE_URL=sqlite:///./data/flowtype.db
       - REDIS_URL=redis://redis:6379/0
       - PYTHONUNBUFFERED=1
     volumes:
       - ./backend:/app
+      # Mount data separately to persist SQLite/FAISS index across rebuilds
+      - ./backend/data:/app/data
     depends_on:
       redis:
         condition: service_healthy
+      # postgres:
+      #   condition: service_healthy
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   worker:
-    build: ./backend
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
     environment:
-      - DATABASE_URL=sqlite:///./flowtype.db
+      - DATABASE_URL=sqlite:///./data/flowtype.db
       - REDIS_URL=redis://redis:6379/0
       - PYTHONUNBUFFERED=1
     volumes:
       - ./backend:/app
+      - ./backend/data:/app/data
     depends_on:
       redis:
         condition: service_healthy
     command: rq worker telemetry
 
   frontend:
-    # For dev: build from source and use dev server
     build:
       context: ./frontend
       dockerfile: Dockerfile.dev
     ports:
       - "5173:5173"
     volumes:
-      - ./frontend/src:/app/src
-      - ./frontend/public:/app/public
-    command: npm run dev
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm run dev -- --host
+
+  # ----------------------------------------------------------------
+  # Offline / Training Services (Run manually or via profiles)
+  # ----------------------------------------------------------------
+  
+  trainer:
+    profiles: ["train", "tools"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.train
+    environment:
+      - DATABASE_URL=sqlite:///./data/flowtype.db
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./backend:/app
+      - ./backend/data:/app/data
+    # Keep container alive for executing scripts
+    command: tail -f /dev/null
 
 volumes:
-  db_data:
+  pg_data:

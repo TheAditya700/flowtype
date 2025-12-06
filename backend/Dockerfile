@@ -1,26 +1,36 @@
+# ---------------------------------------------------
+# Inference / Runtime Dockerfile
+# ---------------------------------------------------
 FROM python:3.11-slim
 
 WORKDIR /app
 
 # Install system dependencies
+# curl/git might be needed for some pip installs or healthchecks
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
+    curl \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# 1. Install Base Dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# NOTE: ML/training dependencies (sentence-transformers, torch, faiss, etc.)
-# have been moved to `requirements-ml.txt` to keep runtime image small.
-# If you need to run training inside a container, use `Dockerfile.train`.
+# 2. Install PyTorch (CPU only) to save massive space
+# We install this BEFORE requirements-ml.txt so sentence-transformers sees it
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+# 3. Install ML Dependencies (Inference)
+COPY requirements-ml.txt .
+RUN pip install --no-cache-dir -r requirements-ml.txt
 
 # Copy application
 COPY . .
 
-# Create data directory for FAISS index
-RUN mkdir -p data
+# Ensure data directories exist (they might be mounted)
+RUN mkdir -p data models
 
 EXPOSE 8000
 

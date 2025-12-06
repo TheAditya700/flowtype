@@ -1,19 +1,41 @@
+# ---------------------------------------------------
+# Training / Offline Dockerfile (GPU Enabled)
+# ---------------------------------------------------
 FROM nvidia/cuda:12.2.1-cudnn8-runtime-ubuntu22.04
 
 WORKDIR /app
 
 # Install Python and system dependencies
-RUN apt-get update && apt-get install -y python3 python3-pip python3-venv gcc g++ git && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-venv \
+    gcc \
+    g++ \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt requirements-ml.txt ./
+# Upgrade pip
 RUN python3 -m pip install --upgrade pip setuptools wheel
+
+# 1. Install Base Dependencies
+COPY requirements.txt .
 RUN python3 -m pip install --no-cache-dir -r requirements.txt
+
+# 2. Install PyTorch (GPU)
+# Standard pip install torch pulls the CUDA-bundled wheel
+RUN python3 -m pip install --no-cache-dir torch
+
+# 3. Install ML Dependencies
+COPY requirements-ml.txt .
 RUN python3 -m pip install --no-cache-dir -r requirements-ml.txt
 
-# Copy application code
+# Copy application
 COPY . .
 
-WORKDIR /app
+# Setup
+RUN mkdir -p data models
+ENV PYTHONPATH=/app
 
-# This image is intended for training (GPU-enabled). It is separate from the runtime image.
 CMD ["/bin/bash"]

@@ -19,6 +19,8 @@ export interface UserState {
   hesitationCount: number;
   recentErrors: string[];
   currentDifficulty: number;
+  recentSnippetIds?: string[];
+  keystroke_timestamps?: number[];
 }
 
 export interface Snippet {

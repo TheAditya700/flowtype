@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
-import WordDisplay from './WordDisplay';
+import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import useTypingSession from '../hooks/useTypingSession';
 import useWPMCalculation from '../hooks/useWPMCalculation';
 import { KeystrokeEvent } from '../types';
@@ -11,28 +10,108 @@ interface SnippetItem {
 }
 
 interface SnippetStats {
-    wpm: number;
-    accuracy: number;
-    errors: number;
-    duration: number;
-    keystrokeEvents: KeystrokeEvent[];
-    startedAt: Date;
+  wpm: number;
+  accuracy: number;
+  errors: number;
+  duration: number;
+  keystrokeEvents: KeystrokeEvent[];
+  startedAt: Date;
 }
 
 interface TypingZoneProps {
   snippets: SnippetItem[];
   onSnippetComplete: (stats: SnippetStats) => void;
+  onRequestPause: () => void;
+  onStatsUpdate?: (stats: { wpm: number; accuracy: number }) => void;
 }
 
-const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete }) => {
-  const [wordIndex, setWordIndex] = useState(0);
-  const [charIndex, setCharIndex] = useState(0);
-  const [typed, setTyped] = useState('');
+const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, onRequestPause, onStatsUpdate }) => {
+  const [typedHistory, setTypedHistory] = useState<string[]>([]);
+  const [currentTyped, setCurrentTyped] = useState(''); 
   const [errors, setErrors] = useState(0);
   const [sessionStarted, setSessionStarted] = useState(false);
-  const containerRef = useRef<HTMLInputElement>(null);
+  
+  // Derived State
+  const wordIndex = typedHistory.length;
+  const charIndex = currentTyped.length;
 
-  // Use local typing session tracking just for this snippet
+  // Cursor State
+  const [cursorPos, setCursorPos] = useState({ top: 0, left: 0 });
+  
+  // Input Ref (Hidden)
+  const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Current Data
+  const currentSnippet = snippets[0];
+  const words = currentSnippet?.words || [];
+
+  // If there's no snippet, don't execute any further logic or render
+  if (!currentSnippet) return null;
+
+  // DEBUGGING: Expose state to window
+  useEffect(() => {
+    (window as any).__FLOWTYPE_DEBUG__ = {
+      wordIndex,
+      charIndex,
+      currentTyped,
+      typedHistory,
+      cursorPos,
+      snippet: currentSnippet
+    };
+  }, [wordIndex, charIndex, currentTyped, typedHistory, cursorPos, currentSnippet]);
+
+  // Cursor Positioning Logic (Same as before, but depends on new state)
+  useLayoutEffect(() => {
+    const updateCursorPosition = () => {
+      // Get the current word element
+      const wordElements = containerRef.current?.querySelectorAll('.word-container');
+      if (!wordElements || wordIndex >= wordElements.length) return;
+      
+      const currentWordEl = wordElements[wordIndex] as HTMLElement;
+      if (!currentWordEl) return;
+      
+      // Get all character spans in the current word
+      const charSpans = currentWordEl.querySelectorAll('.char-span');
+      
+      // Position cursor at the current character index
+      if (charIndex < charSpans.length) {
+        // Cursor before this character
+        const targetChar = charSpans[charIndex] as HTMLElement;
+        const rect = targetChar.getBoundingClientRect();
+        const containerRect = containerRef.current!.getBoundingClientRect();
+        
+        setCursorPos({
+          top: rect.top - containerRect.top,
+          left: rect.left - containerRect.left
+        });
+      } else if (charSpans.length > 0) {
+        // Cursor after the last character (end of word)
+        const lastChar = charSpans[charSpans.length - 1] as HTMLElement;
+        const rect = lastChar.getBoundingClientRect();
+        const containerRect = containerRef.current!.getBoundingClientRect();
+        
+        setCursorPos({
+          top: rect.top - containerRect.top,
+          left: rect.left - containerRect.left + rect.width
+        });
+      } else {
+          // Empty word (start of word), use word container position
+          const rect = currentWordEl.getBoundingClientRect();
+          const containerRect = containerRef.current!.getBoundingClientRect();
+          setCursorPos({
+             top: rect.top - containerRect.top,
+             left: rect.left - containerRect.left
+          });
+      }
+    };
+    
+    updateCursorPosition();
+    const timeoutId = setTimeout(updateCursorPosition, 0);
+    return () => clearTimeout(timeoutId);
+  }, [wordIndex, charIndex, currentTyped, currentSnippet]); 
+
+  // Session Hooks
   const {
     sessionStartTime,
     sessionDuration,
@@ -44,150 +123,231 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete }) 
 
   const { wpm, accuracy } = useWPMCalculation(keystrokeEvents, sessionDuration);
 
-  // Always use the first snippet (current) and second snippet (next preview)
-  const currentSnippet = snippets[0];
-  const nextSnippet = snippets[1];
-  const words = currentSnippet?.words || [];
-
-  // Key handler for typing
+  // Call onStatsUpdate whenever wpm or accuracy changes
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el || !currentSnippet) return;
-    el.focus();
+    if (onStatsUpdate) {
+      onStatsUpdate({ wpm, accuracy });
+    }
+  }, [wpm, accuracy, onStatsUpdate]);
 
-    const onKey = (e: KeyboardEvent) => {
-      if (!currentSnippet) return;
+  // Focus Handler
+  const handleFocus = () => {
+    inputRef.current?.focus();
+  };
 
-      if (!sessionStarted) {
-        startSession();
-        setSessionStarted(true);
-      }
+  // Autofocus
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, [snippets]);
 
-      // Backspace
-      if (e.key === 'Backspace') {
-        e.preventDefault();
-        if (typed.length > 0) {
-          const newTyped = typed.slice(0, -1);
-          setTyped(newTyped);
-          setCharIndex(Math.max(0, charIndex - 1));
-          addKeystrokeEvent({ timestamp: Date.now(), key: 'Backspace', isBackspace: true, isCorrect: false });
-        }
-        return;
-      }
-
-      // Space -> submit current word
-      if (e.key === ' ') {
-        e.preventDefault();
-        const currentWord = words[wordIndex] || '';
-        const typedTrim = typed.trim();
-        const correct = typedTrim === currentWord;
-
-        if (!correct) {
-          setErrors(prev => prev + Math.max(1, Math.abs(typedTrim.length - currentWord.length)));
-        }
-
-        addKeystrokeEvent({ timestamp: Date.now(), key: ' ', isBackspace: false, isCorrect: correct });
-
-        // If last word of snippet, complete snippet
-        if (wordIndex === words.length - 1) {
-          const finalDuration = sessionDuration; // Capture current duration
-          endSession(); // Mark end
-          
-          const stats: SnippetStats = {
-            wpm,
-            accuracy: accuracy / 100,
-            errors,
-            duration: finalDuration,
-            keystrokeEvents,
-            startedAt: new Date(sessionStartTime || Date.now())
-          };
-          
-          onSnippetComplete(stats);
-
-          // Reset for next snippet (parent will remove current and shift queue)
-          // The new currentSnippet (from snippets[1]) will become snippets[0]
-          setWordIndex(0);
-          setTyped('');
-          setCharIndex(0);
-          setErrors(0);
-          setSessionStarted(false);
-          return;
-        }
-
-        // advance to next word within snippet
-        setWordIndex(i => i + 1);
-        setTyped('');
-        setCharIndex(0);
-        return;
-      }
-
-      // Ignore non-printable keys
-      if (e.key.length !== 1) return;
-
-      // Normal character
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Pause
+    if (e.key === 'Enter') {
       e.preventDefault();
-      const newTyped = typed + e.key;
-      setTyped(newTyped);
-      setCharIndex(i => i + 1);
+      onRequestPause();
+      return;
+    }
 
-      const expectedChar = (words[wordIndex] || '')[charIndex] || '';
+    // Start Session
+    if (!sessionStarted) {
+      startSession();
+      setSessionStarted(true);
+    }
+
+    const currentTargetWord = words[wordIndex] || '';
+
+    // Backspace
+    if (e.key === 'Backspace') {
+      if (currentTyped.length > 0) {
+        // Simple backspace within current word
+        setCurrentTyped(prev => prev.slice(0, -1));
+        addKeystrokeEvent({ timestamp: Date.now(), key: 'Backspace', isBackspace: true, isCorrect: false });
+      } else if (typedHistory.length > 0) {
+        // Backspace to previous word
+        const prevWordTyped = typedHistory[typedHistory.length - 1];
+        setTypedHistory(prev => prev.slice(0, -1));
+        setCurrentTyped(prevWordTyped); // Load previous word back into editor
+        // We don't necessarily record a backspace event for "word navigation" but we can if we want strict accounting.
+        // MonkeyType usually just lets you edit.
+      }
+      return;
+    }
+
+    // Space (Submit Word)
+    if (e.key === ' ') {
+      e.preventDefault();
+      
+      // Logic: Compare typed vs currentWord
+      const isCorrectWord = currentTyped === currentTargetWord;
+      if (!isCorrectWord) {
+        setErrors(prev => prev + 1); 
+      }
+      
+      // Push to history
+      const newHistory = [...typedHistory, currentTyped];
+      setTypedHistory(newHistory);
+      setCurrentTyped('');
+      
+      addKeystrokeEvent({ timestamp: Date.now(), key: ' ', isBackspace: false, isCorrect: isCorrectWord });
+
+      // Check Completion
+      if (newHistory.length === words.length) {
+        // Snippet Complete
+        const finalDuration = sessionDuration;
+        endSession();
+        
+        onSnippetComplete({
+          wpm,
+          accuracy: accuracy / 100,
+          errors,
+          duration: finalDuration,
+          keystrokeEvents,
+          startedAt: new Date(sessionStartTime || Date.now())
+        });
+        
+        // Reset
+        setTypedHistory([]);
+        setCurrentTyped('');
+        setErrors(0);
+        setSessionStarted(false);
+      }
+      return;
+    }
+
+    // Normal Character
+    if (e.key.length === 1) {
+      const expectedChar = currentTargetWord[charIndex];
+      const newTyped = currentTyped + e.key;
+      
+      // Strict Mode: Don't allow typing more than word length + extra buffer? 
+      // Or allow it and show red? User asked for "entire word red" if early space.
+      // Let's allow typing freely.
+      
+      setCurrentTyped(newTyped);
+      
       const isCorrect = e.key === expectedChar;
       addKeystrokeEvent({ timestamp: Date.now(), key: e.key, isBackspace: false, isCorrect });
-    };
+    }
+  };
 
-    el.addEventListener('keydown', onKey as any);
-    return () => el.removeEventListener('keydown', onKey as any);
-  }, [typed, charIndex, wordIndex, words, sessionStarted, currentSnippet, startSession, endSession, addKeystrokeEvent, keystrokeEvents, sessionDuration, wpm, accuracy, errors, onSnippetComplete]);
+  // Render Helper
+  const renderSnippet = (snippetWords: string[], isCurrentSnippet: boolean) => {
+    return (
+      <div className={`flex flex-wrap content-start select-none mb-4 ${isCurrentSnippet ? '' : 'opacity-40 grayscale blur-[1px]'}`}>
+        {snippetWords.map((targetWord, wIdx) => {
+          const isCurrentWord = isCurrentSnippet && wIdx === wordIndex;
+          const isPastWord = isCurrentSnippet && wIdx < wordIndex;
+          
+          // Determine what was typed for this word
+          let typedContent = '';
+          if (isPastWord) {
+              typedContent = typedHistory[wIdx] || '';
+          } else if (isCurrentWord) {
+              typedContent = currentTyped;
+          }
 
-  if (!currentSnippet) {
-    return <p className="text-center text-gray-400">Loading...</p>;
-  }
+          // Split word into characters
+          const chars = targetWord.split('');
+          
+          // Render extra typed chars (if any)
+          const displayChars = (isCurrentWord || isPastWord) && typedContent.length > targetWord.length 
+            ? [...chars, ...typedContent.slice(targetWord.length).split('')]
+            : chars;
+
+          return (
+            <div key={wIdx} className="word-container relative inline-block mr-4 mb-2 text-3xl font-mono leading-relaxed">
+              {displayChars.map((char, cIdx) => {
+                let colorClass = 'text-gray-600'; 
+                let isExtra = cIdx >= targetWord.length; // Is this an extra char typed by user?
+
+                if (!isCurrentSnippet) {
+                  colorClass = 'text-gray-500'; 
+                } else if (isPastWord) {
+                   // PAST WORD LOGIC: Show Errors Red, Correct White
+                   const typedChar = typedContent[cIdx];
+                   const originalChar = targetWord[cIdx]; // undefined if extra
+                   
+                   if (typedChar === undefined) {
+                       // Missing char (Early Space)
+                       colorClass = 'text-red-500'; // Or underline?
+                   } else if (isExtra) {
+                       // Extra char typed
+                       colorClass = 'text-red-600 opacity-70'; 
+                   } else if (typedChar === originalChar) {
+                       colorClass = 'text-gray-100';
+                   } else {
+                       colorClass = 'text-red-500';
+                   }
+
+                } else if (isCurrentWord) {
+                   // CURRENT WORD LOGIC
+                  if (cIdx < typedContent.length) {
+                    const typedChar = typedContent[cIdx];
+                    const originalChar = targetWord[cIdx];
+                    
+                    if (isExtra) {
+                        colorClass = 'text-red-600 opacity-70';
+                    } else if (typedChar === originalChar) {
+                      colorClass = 'text-gray-100'; 
+                    } else {
+                      colorClass = 'text-red-500';
+                    }
+                  } else {
+                    colorClass = 'text-gray-600';
+                  }
+                }
+
+                return (
+                  <span 
+                    key={cIdx}
+                    className={`char-span inline-block ${colorClass} transition-colors duration-75`}
+                  >
+                    {char}
+                  </span>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  if (!currentSnippet) return null;
 
   return (
-    <div className="typing-zone relative">
-      {/* Display current snippet and next preview */}
-      <div className="space-y-4 overflow-hidden">
-        {currentSnippet && (
-          <div className="p-4 rounded-lg bg-gray-700 border-2 border-blue-500">
-            <WordDisplay
-              words={words}
-              currentWordIndex={wordIndex}
-              charIndex={charIndex}
-              inputValue={typed}
-            />
-          </div>
-        )}
-        {nextSnippet && (
-          <div className="p-4 rounded-lg bg-gray-800 opacity-60 border border-gray-600">
-            <WordDisplay
-              words={nextSnippet.words || []}
-              currentWordIndex={-1}
-              charIndex={0}
-              inputValue=""
-            />
-          </div>
-        )}
-      </div>
-
-      {/* Input field that captures all keyboard events */}
+    <div 
+      className="relative outline-none min-h-[300px] cursor-text flex flex-col" 
+      onClick={handleFocus}
+      ref={containerRef}
+    >
+      {/* Hidden Input for capturing typing */}
       <input
-        ref={containerRef}
+        ref={inputRef}
         type="text"
-        value={typed}
-        onChange={() => {}} // Controlled by keydown, not onChange
-        className="w-full mt-4 p-3 bg-gray-900 text-gray-400 rounded-md cursor-text focus:outline-none focus:ring-2 focus:ring-blue-500"
-        placeholder="Start typing..."
+        className="absolute opacity-0 top-0 left-0 h-0 w-0"
         autoFocus
-        autoCapitalize="off"
-        autoCorrect="off"
-        spellCheck="false"
+        onKeyDown={handleKeyDown}
+        value="" 
+        onChange={() => {}}
       />
 
-      {/* Stats line */}
-      <div className="mt-4 text-sm text-gray-400 space-y-1">
-        <p>WPM: {wpm.toFixed(0)} | Accuracy: {accuracy.toFixed(0)}% | Errors: {errors}</p>
-        <p>Queue: {snippets.length} snippets</p>
-      </div>
+      {/* Cursor Element - Show if session started OR if it's the initial state (word 0, char 0) */}
+      {(sessionStarted || (wordIndex === 0 && charIndex === 0)) && cursorPos && (
+        <div 
+          className="absolute w-1 h-8 bg-blue-400 rounded-full transition-all duration-100 ease-out z-10"
+          style={{ 
+            top: cursorPos.top + 4, 
+            left: cursorPos.left - 2 
+          }}
+        />
+      )}
+
+      {/* Current Snippet */}
+      {renderSnippet(words, true)}
+
+      {/* Next Snippet Preview */}
+      {snippets[1] && renderSnippet(snippets[1].words, false)}
     </div>
   );
 };

@@ -1,2 +1,6 @@
-# ML and training-only dependencies (GPU for training)
-torch
+sentence-transformers
+faiss-cpu
+numpy
+scikit-learn
+lightgbm
+pandas

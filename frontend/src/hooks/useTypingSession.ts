@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { KeystrokeEvent } from '../types';
 
 interface TypingSessionHook {
@@ -14,9 +14,23 @@ const useTypingSession = (): TypingSessionHook => {
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
   const [sessionEndTime, setSessionEndTime] = useState<number | null>(null);
   const [keystrokeEvents, setKeystrokeEvents] = useState<KeystrokeEvent[]>([]);
+  const [currentTime, setCurrentTime] = useState<number>(Date.now());
+
+  // Live Timer
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (sessionStartTime && !sessionEndTime) {
+      interval = setInterval(() => {
+        setCurrentTime(Date.now());
+      }, 100); // Update every 100ms for smooth WPM
+    }
+    return () => clearInterval(interval);
+  }, [sessionStartTime, sessionEndTime]);
 
   const startSession = useCallback(() => {
-    setSessionStartTime(Date.now());
+    const now = Date.now();
+    setSessionStartTime(now);
+    setCurrentTime(now);
     setSessionEndTime(null);
     setKeystrokeEvents([]);
   }, []);
@@ -32,7 +46,7 @@ const useTypingSession = (): TypingSessionHook => {
   const sessionDuration = sessionStartTime && sessionEndTime
     ? (sessionEndTime - sessionStartTime) / 1000
     : sessionStartTime
-      ? (Date.now() - sessionStartTime) / 1000
+      ? (currentTime - sessionStartTime) / 1000
       : 0;
 
   return {

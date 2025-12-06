@@ -1,10 +1,12 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import TypingZone from './components/TypingZone';
 import StatsPanel from './components/StatsPanel';
 import { fetchNextSnippet, saveSession } from './api/client';
 import { UserState, SnippetLog, KeystrokeEvent, SessionCreateRequest, SnippetResult } from './types';
 import { RotateCcw } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid'; // Import uuid for unique ID generation
+
+import PauseScreen from './components/PauseScreen';
 
 interface QueuedSnippet {
   id: string;
@@ -33,12 +35,22 @@ function App() {
     };
   });
   const [snippetLogs, setSnippetLogs] = useState<SnippetLog[]>([]);
+  const [allKeystrokes, setAllKeystrokes] = useState<KeystrokeEvent[]>([]);
+  const [isPaused, setIsPaused] = useState(false);
+
   const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
   const [sessionStats, setSessionStats] = useState({
     totalWords: 0,
     totalErrors: 0,
     totalDuration: 0
   });
+  
+  // Live stats for the current snippet
+  const [liveStats, setLiveStats] = useState({ wpm: 0, accuracy: 100 });
+
+  const handleStatsUpdate = useCallback((stats: { wpm: number; accuracy: number }) => {
+    setLiveStats({ wpm: stats.wpm, accuracy: stats.accuracy });
+  }, []);
 
   const isFetching = useRef(false);
 
@@ -115,6 +127,8 @@ function App() {
     };
 
     setSnippetLogs(prev => [...prev, log]);
+    setAllKeystrokes(prev => [...prev, ...stats.keystrokeEvents]);
+    
     setSessionStats(prev => ({
         totalWords: prev.totalWords + currentSnippet.words.length,
         totalErrors: prev.totalErrors + stats.errors,
@@ -131,7 +145,7 @@ function App() {
     setUserState(newUserState);
     
     // Add to recent IDs
-    const updatedRecentIds = [...recentSnippetIds, currentSnippet.id].slice(-10);
+    const updatedRecentIds = [...recentSnippetIds, currentSnippet.id].slice(-20);
     setRecentSnippetIds(updatedRecentIds);
 
     // Shift queue
@@ -173,8 +187,10 @@ function App() {
 
   const resetSession = () => {
     setSnippetLogs([]);
+    setAllKeystrokes([]);
     setSessionStats({ totalWords: 0, totalErrors: 0, totalDuration: 0 });
     setSessionStartTime(null);
+    setIsPaused(false);
     setUserState({
       rollingWpm: 0,
       rollingAccuracy: 1,
@@ -183,41 +199,56 @@ function App() {
       recentErrors: [],
       currentDifficulty: 5,
     });
+    // Could also fetch new snippets here to clear queue
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 text-gray-100 flex flex-col items-center justify-center p-4">
-      <h1 className="text-5xl font-bold mb-8 text-blue-400">FlowType</h1>
+    <div className="min-h-screen bg-gray-900 text-gray-100 flex flex-col items-center justify-center p-8 relative font-mono">
       
-      <div className="flex flex-col md:flex-row gap-8 w-full max-w-4xl">
-        <div className="flex-1 bg-gray-800 p-6 rounded-lg shadow-lg">
-          {snippetQueue.length > 0 ? (
-            <TypingZone snippets={snippetQueue} onSnippetComplete={handleSnippetComplete} />
-          ) : (
-            <p className="text-center">Loading snippets...</p>
-          )}
-        </div>
-        <div className="w-full md:w-1/3 bg-gray-800 p-6 rounded-lg shadow-lg flex flex-col gap-4">
-          <StatsPanel wpm={userState.rollingWpm} accuracy={userState.rollingAccuracy * 100} />
-          
-          <div className="bg-gray-700 p-4 rounded-lg">
-            <h3 className="text-lg font-semibold mb-2 text-gray-300">Session Progress</h3>
-            <div className="text-sm text-gray-400 space-y-1">
-                <p>Snippets Completed: {snippetLogs.length}</p>
-                <p>Total Words: {sessionStats.totalWords}</p>
-                <p>Total Time: {Math.round(sessionStats.totalDuration)}s</p>
-            </div>
-            {snippetLogs.length > 0 && (
-              <button 
-                onClick={resetSession}
-                className="mt-4 w-full flex items-center justify-center gap-2 bg-yellow-600 hover:bg-yellow-700 text-white py-2 px-4 rounded transition-colors"
-              >
-                <RotateCcw size={18} />
-                Reset Session
-              </button>
-            )}
+      {/* Pause Screen Overlay */}
+      {isPaused && (
+        <PauseScreen 
+          onResume={() => setIsPaused(false)}
+          onReset={resetSession}
+          logs={snippetLogs}
+          allKeystrokes={allKeystrokes}
+          totalWords={sessionStats.totalWords}
+          totalTime={sessionStats.totalDuration}
+        />
+      )}
+
+      {/* Header / Minimal Stats */}
+      <div className="w-full max-w-6xl flex justify-between items-end mb-12 opacity-50 hover:opacity-100 transition-opacity">
+        <h1 className="text-3xl font-bold text-gray-500">flowtype</h1>
+        <div className="flex gap-8 text-xl text-gray-400">
+          <div>
+            <span className="text-sm text-gray-600 mr-2">wpm</span>
+            <span className="font-bold text-blue-400">{Math.round(liveStats.wpm)}</span>
+          </div>
+          <div>
+            <span className="text-sm text-gray-600 mr-2">acc</span>
+            <span className="font-bold text-green-400">{Math.round(liveStats.accuracy)}%</span>
           </div>
         </div>
+      </div>
+      
+      {/* Main Typing Area */}
+      <div className="w-full max-w-[1600px] px-8 relative">
+          {snippetQueue.length > 0 ? (
+            <TypingZone 
+              snippets={snippetQueue} 
+              onSnippetComplete={handleSnippetComplete}
+              onRequestPause={() => setIsPaused(true)}
+              onStatsUpdate={handleStatsUpdate}
+            />
+          ) : (
+            <div className="text-center text-gray-500 animate-pulse">loading...</div>
+          )}
+      </div>
+
+      {/* Footer Hints */}
+      <div className="absolute bottom-8 text-center text-gray-600 text-sm">
+        <span className="bg-gray-800 px-2 py-1 rounded text-xs mr-2">enter</span> to pause
       </div>
     </div>
   );

@@ -81,10 +81,23 @@ def retrieve_snippets(
     
     filtered_snippets = [s for s in ranked_snippets if str(s.get("id")) not in exclude_ids]
     
-    # 5. Format top 1 snippet only
+    # 5. Format top snippet with Exploration (Weighted Random)
     top_snippet = None
     if filtered_snippets:
-        s = filtered_snippets[0]
+        # Exploration: Take top K (e.g., 50) and sample
+        top_k = filtered_snippets[:50]
+        
+        # Simple weighted probability: higher rank = higher chance
+        # Weights: [50, 49, 48, ..., 1]
+        weights = list(range(len(top_k), 0, -1))
+        total_weight = sum(weights)
+        probs = [w / total_weight for w in weights]
+        
+        # Pick one
+        import numpy as np
+        selected_idx = np.random.choice(len(top_k), p=probs)
+        s = top_k[selected_idx]
+        
         top_snippet = {"id": s.get("id"), "words": s.get("words"), "difficulty": s.get("difficulty")}
 
     # 6. Compute rolling WPM windows from optional keystroke timestamps

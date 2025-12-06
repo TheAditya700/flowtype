@@ -1,14 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { KeystrokeEvent } from '../types';
 
 const useWPMCalculation = (keystrokeEvents: KeystrokeEvent[], sessionDuration: number) => {
-  const [wpm, setWpm] = useState<number>(0);
-  const [accuracy, setAccuracy] = useState<number>(100); // Percentage
+  const latestWpm = useRef(0);
+  const latestAccuracy = useRef(100);
 
+  const [displayedWpm, setDisplayedWpm] = useState<number>(0);
+  const [displayedAccuracy, setDisplayedAccuracy] = useState<number>(100);
+
+  // Effect to calculate WPM/Accuracy frequently (this runs on every keystroke/timer update)
   useEffect(() => {
     if (sessionDuration === 0 || keystrokeEvents.length === 0) {
-      setWpm(0);
-      setAccuracy(100);
+      latestWpm.current = 0;
+      latestAccuracy.current = 100;
       return;
     }
 
@@ -26,16 +30,29 @@ const useWPMCalculation = (keystrokeEvents: KeystrokeEvent[], sessionDuration: n
 
     // WPM calculation: (characters / 5) / minutes
     const minutes = sessionDuration / 60;
-    const calculatedWPM = (totalTypedChars / 5) / minutes;
-    setWpm(isNaN(calculatedWPM) ? 0 : calculatedWPM);
+    let calculatedWPM = (totalTypedChars / 5) / minutes;
+    if (isNaN(calculatedWPM) || !isFinite(calculatedWPM)) calculatedWPM = 0;
 
     // Accuracy calculation: (correct characters / total typed characters) * 100
     const calculatedAccuracy = totalTypedChars === 0 ? 100 : (correctChars / totalTypedChars) * 100;
-    setAccuracy(isNaN(calculatedAccuracy) ? 100 : calculatedAccuracy);
+    
+    latestWpm.current = calculatedWPM;
+    latestAccuracy.current = calculatedAccuracy;
 
   }, [keystrokeEvents, sessionDuration]);
 
-  return { wpm, accuracy };
+  // Effect to update displayed WPM/Accuracy every second
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setDisplayedWpm(Math.round(latestWpm.current));
+      setDisplayedAccuracy(Math.round(latestAccuracy.current));
+    }, 1000); // Update every 1 second
+
+    // Clear interval on cleanup or if session ends
+    return () => clearInterval(interval);
+  }, []); // Only run once on mount
+
+  return { wpm: displayedWpm, accuracy: displayedAccuracy };
 };
 
 export default useWPMCalculation;

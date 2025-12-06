@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+.git/
+.env
+.DS_Store
+# Ignore data directory to keep image light (mount it instead)
+data/
+models/
+models_tmp/
