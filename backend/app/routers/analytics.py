@@ -181,6 +181,11 @@ def calculate_metrics(request: AnalyticsRequest):
                     isRollover=is_rollover
                 ))
 
+        # Calculate avgChunkLength
+        chunk_starts = sum(1 for e in replay_events if e.isChunkStart)
+        num_chunks = 1 + chunk_starts
+        avg_chunk_length = len(replay_events) / num_chunks if replay_events else 0.0
+
         # --- Heatmap IKI gathering ---
         for i in range(1, len(sorted_events)):
             curr = sorted_events[i]
@@ -226,7 +231,8 @@ def calculate_metrics(request: AnalyticsRequest):
             errors=extractor.total_errors,
             heatmapData=heatmap_data,
             speedSeries=speed_series,
-            replayEvents=replay_events
+            replayEvents=replay_events,
+            avgChunkLength=avg_chunk_length
         )
         
     except Exception as e:

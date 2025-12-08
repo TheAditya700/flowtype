@@ -18,7 +18,7 @@ const SpeedGraph: React.FC<SpeedGraphProps> = ({ data }) => {
   return (
     <div className="w-full h-[300px] bg-gray-900 rounded-xl p-4 border border-gray-800">
       <h3 className="text-gray-400 text-sm font-medium mb-4">Speed & Errors</h3>
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="94%" height="90%">
         <LineChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.5} />
           <XAxis 

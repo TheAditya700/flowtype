@@ -45,6 +45,7 @@ function App() {
   
   const [sessionSummary, setSessionSummary] = useState({
     wpm: 0,
+    rawWpm: 0,
     accuracy: 0,
     errors: 0,
     duration: 0, 
@@ -53,10 +54,10 @@ function App() {
     totalWords: 0
   });
 
-  const [liveStats, setLiveStats] = useState({ wpm: 0, accuracy: 100 });
+  const [liveStats, setLiveStats] = useState({ wpm: 0, accuracy: 100, time: 0 });
 
-  const handleStatsUpdate = useCallback((stats: { wpm: number; accuracy: number }) => {
-    setLiveStats({ wpm: stats.wpm, accuracy: stats.accuracy });
+  const handleStatsUpdate = useCallback((stats: { wpm: number; accuracy: number; time: number }) => {
+    setLiveStats({ wpm: stats.wpm, accuracy: stats.accuracy, time: stats.time });
   }, []);
 
   const isFetching = useRef(false);
@@ -158,6 +159,10 @@ function App() {
     
     const correctKeystrokes = updatedAllKeystrokes.filter(k => k.isCorrect && !k.isBackspace).length;
     const currentSessionWpm = totalDuration > 0 ? (correctKeystrokes / 5) / (totalDuration / 60) : 0;
+    
+    const totalKeystrokes = updatedAllKeystrokes.length;
+    const currentSessionRawWpm = totalDuration > 0 ? (totalKeystrokes / 5) / (totalDuration / 60) : 0;
+    
     const currentSessionAccuracy = updatedAllKeystrokes.length > 0 ? (updatedAllKeystrokes.filter(k => k.isCorrect).length / updatedAllKeystrokes.length) : 0;
 
     const snippetText = currentSnippet.words.join(' ');
@@ -166,6 +171,7 @@ function App() {
 
     setSessionSummary({
       wpm: currentSessionWpm,
+      rawWpm: currentSessionRawWpm,
       accuracy: currentSessionAccuracy,
       errors: sessionSummary.errors + stats.errors,
       duration: totalDuration,
@@ -208,7 +214,7 @@ function App() {
         accuracy: currentSessionAccuracy,
         errors: sessionSummary.errors + stats.errors,
         difficultyLevel: safeDifficulty,
-        snippets: [snippetResult], // This is simplistic, implies 1 snippet per "session" save?
+        snippets: [snippetResult],
         user_state: userState, 
         flowScore: 0.0 
     };
@@ -227,7 +233,7 @@ function App() {
     setTotalPausedDuration(0);
     
     setSessionSummary({
-      wpm: 0, accuracy: 0, errors: 0, duration: 0, keystrokeEvents: [], text: "", totalWords: 0
+      wpm: 0, rawWpm: 0, accuracy: 0, errors: 0, duration: 0, keystrokeEvents: [], text: "", totalWords: 0
     });
     setUserState(prev => ({
       ...prev,
@@ -250,12 +256,7 @@ function App() {
     // 1. Reset Session Data (Clear history, logs, timers)
     resetSession();
     
-    // 2. Shift Queue to discard the current unfinished snippet (if any)
-    // If we paused after completion, handleSnippetComplete already shifted.
-    // If we paused mid-snippet, we want to skip it.
-    // Since we don't know if we are mid-snippet easily here without checking snippetLogs vs queue...
-    // Actually, if we paused mid-snippet, snippetLogs is NOT updated with it.
-    // So we should force a shift to ensure "Fresh" snippet.
+    // 2. Remove the completed snippet from the queue
     setSnippetQueue(prev => prev.slice(1));
     
     // 3. Ensure we have enough snippets
@@ -285,6 +286,7 @@ function App() {
             <ResultsDashboard 
               keystrokeEvents={sessionSummary.keystrokeEvents} 
               wpm={sessionSummary.wpm}
+              rawWpm={sessionSummary.rawWpm}
               accuracy={sessionSummary.accuracy}
               duration={sessionSummary.duration}
               snippetText={sessionSummary.text}
@@ -298,7 +300,7 @@ function App() {
                     <div className="absolute bottom-0 left-0 w-full flex justify-between items-end transition-all duration-500 opacity-100 translate-y-0">
                         <h1 className="text-3xl font-bold text-subtle tracking-tighter">nerdtype</h1>
                         {snippetQueue.length > 0 && (
-                            <TypingZoneStatsDisplay wpm={liveStats.wpm} accuracy={liveStats.accuracy} />
+                            <TypingZoneStatsDisplay wpm={liveStats.wpm} accuracy={liveStats.accuracy} time={liveStats.time} />
                         )}
                     </div>
                 </div>

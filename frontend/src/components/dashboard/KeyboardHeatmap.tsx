@@ -60,7 +60,7 @@ const KeyboardHeatmap: React.FC<KeyboardHeatmapProps> = ({ charStats }) => {
           </div>
       </div>
       
-      <div className="flex flex-col gap-2 select-none">
+        <div className="flex h-auto flex-col p-8 pb-10 gap-2 select-none">
         {ROWS.map((row, rIdx) => (
           <div key={rIdx} className="flex justify-center gap-2">
             {row.map((char) => (

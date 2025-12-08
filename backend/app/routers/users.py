@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.models.schema import UserStats, UserProfile
 from app.models.db_models import TypingSession, User
-from sqlalchemy import func
+from sqlalchemy import func, and_
 import uuid
 
 from app.routers.auth import get_current_active_user # Import the dependency
@@ -17,30 +17,42 @@ def get_db():
     finally:
         db.close()
 
+def _calculate_stats(user_id: str, db: Session) -> UserStats:
+    # Basic aggregates
+    basic_stats = db.query(
+        func.count(TypingSession.id).label("total_sessions"),
+        func.avg(TypingSession.final_wpm).label("avg_wpm"),
+        func.avg(TypingSession.accuracy).label("avg_accuracy"),
+        func.sum(TypingSession.duration_seconds).label("total_time")
+    ).filter(TypingSession.user_id == user_id).first()
+
+    # Best WPMs for specific durations (approximate matching)
+    def get_best_wpm(target_time: int):
+        return db.query(func.max(TypingSession.final_wpm)).filter(
+            and_(
+                TypingSession.user_id == user_id,
+                TypingSession.duration_seconds >= target_time - 1,
+                TypingSession.duration_seconds <= target_time + 1
+            )
+        ).scalar()
+
+    return UserStats(
+        total_sessions=basic_stats.total_sessions if basic_stats else 0,
+        avg_wpm=basic_stats.avg_wpm or 0.0,
+        avg_accuracy=basic_stats.avg_accuracy or 0.0,
+        total_time_typing=basic_stats.total_time or 0.0,
+        best_wpm_15=get_best_wpm(15) or 0.0,
+        best_wpm_30=get_best_wpm(30) or 0.0,
+        best_wpm_60=get_best_wpm(60) or 0.0,
+        best_wpm_120=get_best_wpm(120) or 0.0
+    )
+
 @router.get("/{user_id}/stats", response_model=UserStats)
 def get_user_stats(user_id: uuid.UUID, db: Session = Depends(get_db)):
     """
     Retrieves aggregate typing statistics for a given user.
     """
-    stats = db.query(
-        func.count(TypingSession.id).label("total_sessions"),
-        func.avg(TypingSession.final_wpm).label("avg_wpm"),
-        func.avg(TypingSession.accuracy).label("avg_accuracy")
-    ).filter(TypingSession.user_id == str(user_id)).first()
-
-    if not stats or stats.total_sessions == 0:
-        # Return empty stats instead of 404 for better UX
-        return UserStats(
-            total_sessions=0,
-            avg_wpm=0.0,
-            avg_accuracy=0.0
-        )
-
-    return UserStats(
-        total_sessions=stats.total_sessions,
-        avg_wpm=stats.avg_wpm or 0.0,
-        avg_accuracy=stats.avg_accuracy or 0.0
-    )
+    return _calculate_stats(str(user_id), db)
 
 
 @router.get("/me/profile", response_model=UserProfile) # Change path and remove user_id param
@@ -51,18 +63,7 @@ async def get_user_profile(current_user: User = Depends(get_current_active_user)
     # current_user is already loaded by the dependency
     user_id = str(current_user.id) # Get ID from the authenticated user
     
-    # Calculate stats (reuse logic or call internal function)
-    stats_query = db.query(
-        func.count(TypingSession.id).label("total_sessions"),
-        func.avg(TypingSession.final_wpm).label("avg_wpm"),
-        func.avg(TypingSession.accuracy).label("avg_accuracy")
-    ).filter(TypingSession.user_id == user_id).first()
-
-    stats = UserStats(
-        total_sessions=stats_query.total_sessions if stats_query else 0,
-        avg_wpm=stats_query.avg_wpm or 0.0,
-        avg_accuracy=stats_query.avg_accuracy or 0.0
-    )
+    stats = _calculate_stats(user_id, db)
 
     return UserProfile(
         user_id=user_id,

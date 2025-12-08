@@ -1,62 +1,52 @@
-import React, { useMemo } from 'react';
-import { UserProfile } from '../../types';
+import React from 'react';
 
 interface SkillBarsProps {
-  userProfile: UserProfile | null;
+  accuracy: number;    // 0-100
+  consistency: number; // 0-100
+  speed: number;       // WPM
 }
 
-const SkillBar: React.FC<{ label: string; value: number; max: number; colorClass: string }> = ({ label, value, max, colorClass }) => {
-  const percentage = (value / max) * 100;
+const SkillBar: React.FC<{ label: string; value: number; color: string; max?: number; format?: (v: number) => string }> = ({ label, value, color, max = 100, format }) => {
+  const percentage = Math.min(100, Math.max(0, (value / max) * 100));
+  
   return (
-    <div className="mb-3">
-      <div className="flex justify-between items-center text-sm mb-1">
-        <span className="text-text-light">{label}</span>
-        <span className="text-subtle">{value.toFixed(1)} / {max}</span>
+    <div className="mb-4 last:mb-0">
+      <div className="flex justify-between text-xs font-medium text-gray-400 mb-1 uppercase tracking-wider">
+        <span>{label}</span>
+        <span className="text-gray-200">{format ? format(value) : Math.round(value)}</span>
       </div>
-      <div className="w-full bg-bg rounded-full h-2.5">
+      <div className="h-2 w-full bg-gray-800 rounded-full overflow-hidden">
         <div 
-          className={`h-2.5 rounded-full ${colorClass}`} 
-          style={{ width: `${percentage}%` }}
-        ></div>
+          className={`h-full ${color} transition-all duration-1000 ease-out`} 
+          style={{ width: `${percentage}%` }} 
+        />
       </div>
     </div>
   );
 };
 
-const SkillBars: React.FC<SkillBarsProps> = ({ userProfile }) => {
-  // Extract and normalize features from userProfile.features
-  const skillData = useMemo(() => {
-    if (!userProfile || !userProfile.features) return [];
-
-    const features = userProfile.features;
-    // These are example mappings to skill bars.
-    // The actual mapping needs to be refined based on the real feature structure.
-    return [
-      { label: "WPM Consistency", value: features.rollingWpm || 0, max: 100, color: "bg-green-500" },
-      { label: "Accuracy", value: features.rollingAccuracy ? features.rollingAccuracy * 100 : 0, max: 100, color: "bg-blue-500" },
-      { label: "Backspace Control", value: features.backspaceRate ? 100 - (features.backspaceRate * 100) : 100, max: 100, color: "bg-red-500" }, // Lower rate is better
-      { label: "Hesitation Control", value: features.hesitationCount ? 100 - (features.hesitationCount * 2) : 100, max: 100, color: "bg-yellow-500" }, // Lower count is better
-      { label: "Flow Stability", value: features.flowScore || 0, max: 10, color: "bg-purple-500" }, // Assuming a score out of 10
-      // Add more features as they become defined
-    ];
-  }, [userProfile]);
-
-  if (!userProfile) {
-    return (
-      <div className="bg-container p-6 rounded-xl shadow-lg flex flex-col justify-center items-center h-full">
-        <p className="text-subtle text-lg">Login to see your Skill Profile!</p>
-      </div>
-    );
-  }
-
+const SkillBars: React.FC<SkillBarsProps> = ({ accuracy, consistency, speed }) => {
   return (
-    <div className="bg-container p-6 rounded-xl shadow-lg flex flex-col">
-      <h3 className="text-xl font-semibold text-text mb-4">Skill Profile</h3>
-      <div className="flex-grow">
-        {skillData.map((skill, index) => (
-          <SkillBar key={index} label={skill.label} value={skill.value} max={skill.max} colorClass={skill.color} />
-        ))}
-      </div>
+    <div className="w-full bg-gray-900 rounded-xl p-5 border border-gray-800 h-full flex flex-col justify-center">
+      <SkillBar 
+        label="Accuracy" 
+        value={accuracy * 100} 
+        color="bg-emerald-500" 
+        format={(v) => `${Math.round(v)}%`}
+      />
+      <SkillBar 
+        label="Consistency" 
+        value={consistency} 
+        color="bg-blue-500" 
+        format={(v) => `${Math.round(v)}`}
+      />
+      <SkillBar 
+        label="Speed" 
+        value={speed} 
+        max={200} // Assuming 200 is a "full bar" goal for visualization
+        color="bg-purple-500" 
+        format={(v) => `${Math.round(v)} wpm`}
+      />
     </div>
   );
 };

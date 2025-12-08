@@ -11,8 +11,11 @@ const Header: React.FC<HeaderProps> = ({ isPaused }) => {
   const { theme, setTheme } = useTheme();
 
   return (
-    <header className="w-full flex justify-end items-start mb-4 z-20 relative h-12">
-      {/* Top Right: Controls (Visible when Paused) */}
+    <header className={`w-full flex justify-between items-start mb-4 z-20 relative h-12 ${isPaused ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`}>
+      <div className="flex items-center gap-4">
+        <h1 className="text-3xl font-bold text-subtle tracking-tighter">nerdtype</h1>
+      </div>
+
       <div className={`flex gap-4 transition-all duration-500 ${isPaused ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`}>
         <div className="flex items-center gap-2 bg-container p-2 rounded-lg">
             <Palette size={18} className="text-text-subtle" />
@@ -28,7 +31,7 @@ const Header: React.FC<HeaderProps> = ({ isPaused }) => {
                 <option value="gruvbox">Gruvbox</option>
             </select>
         </div>
-        <UserMenu /> {/* Use UserMenu component */}
+        <UserMenu /> 
       </div>
     </header>
   );

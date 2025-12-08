@@ -73,6 +73,11 @@ export interface UserStats {
   total_sessions: number;
   avg_wpm: number;
   avg_accuracy: number;
+  total_time_typing: number;
+  best_wpm_15: number;
+  best_wpm_30: number;
+  best_wpm_60: number;
+  best_wpm_120: number;
 }
 
 export interface UserProfile {
@@ -118,4 +123,5 @@ export interface AnalyticsResponse {
   heatmapData: Record<string, { accuracy: number; speed: number }>;
   speedSeries: SpeedPoint[];
   replayEvents: ReplayEvent[];
+  avgChunkLength: number;
 }

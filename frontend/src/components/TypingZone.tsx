@@ -22,7 +22,7 @@ interface TypingZoneProps {
   snippets: SnippetItem[];
   onSnippetComplete: (stats: SnippetStats) => void;
   onRequestPause: () => void;
-  onStatsUpdate?: (stats: { wpm: number; accuracy: number }) => void;
+  onStatsUpdate?: (stats: { wpm: number; accuracy: number; time: number }) => void;
 }
 
 const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, onRequestPause, onStatsUpdate }) => {
@@ -131,9 +131,9 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
   // Call onStatsUpdate whenever wpm or accuracy changes
   useEffect(() => {
     if (onStatsUpdate) {
-      onStatsUpdate({ wpm, accuracy });
+      onStatsUpdate({ wpm, accuracy, time: sessionDuration });
     }
-  }, [wpm, accuracy, onStatsUpdate]);
+  }, [wpm, accuracy, sessionDuration, onStatsUpdate]);
 
   // Focus Handler
   const handleFocus = () => {
@@ -157,15 +157,24 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
     // Pause
     if (e.key === 'Enter') {
       e.preventDefault();
-      pauseSession(); // Pause tracking
+      pauseSession(); // Pause tracking immediately
       onRequestPause(); // Notify parent to switch view
       return;
     }
 
-    // Start Session
+    // Start Session - Only on valid characters
     if (!sessionStarted) {
-      startSession();
-      setSessionStarted(true);
+       // Allow letters, numbers, punctuation, symbols (basically length 1 strings)
+       // Do NOT start on Backspace, Shift, Control, Alt, etc.
+       const isValidStartKey = e.key.length === 1; 
+       
+       if (isValidStartKey) {
+          startSession();
+          setSessionStarted(true);
+       } else {
+          // If trying to backspace before starting or hitting modifier, just ignore or handle normally
+          // but don't start timer.
+       }
     }
     
     // Generate Event ID
@@ -179,7 +188,9 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
       if (currentTyped.length > 0) {
         // Simple backspace within current word
         setCurrentTyped(prev => prev.slice(0, -1));
-        addKeystrokeEvent({ id: eventId, timestamp: Date.now(), key: 'Backspace', isBackspace: true, isCorrect: false });
+        if (sessionStarted) { // Only record if session started
+            addKeystrokeEvent({ id: eventId, timestamp: Date.now(), key: 'Backspace', isBackspace: true, isCorrect: false });
+        }
       } else if (typedHistory.length > 0) {
         // Backspace to previous word
         const prevWordTyped = typedHistory[typedHistory.length - 1];
@@ -206,7 +217,9 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
       setTypedHistory(newHistory);
       setCurrentTyped('');
       
-      addKeystrokeEvent({ id: eventId, timestamp: Date.now(), key: ' ', isBackspace: false, isCorrect: isCorrectWord });
+      if (sessionStarted) {
+         addKeystrokeEvent({ id: eventId, timestamp: Date.now(), key: ' ', isBackspace: false, isCorrect: isCorrectWord });
+      }
 
       // Check Completion
       if (newHistory.length === words.length) {
@@ -244,7 +257,12 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
       setCurrentTyped(newTyped);
       
       const isCorrect = e.key === expectedChar;
-      addKeystrokeEvent({ id: eventId, timestamp: Date.now(), key: e.key, isBackspace: false, isCorrect });
+      if (sessionStarted || !sessionStarted) { 
+          // Note: If we just started the session above, sessionStarted state might not be updated yet in this render cycle
+          // But we want to record the first keystroke too.
+          // Since we check isValidStartKey above, we know this is valid.
+          addKeystrokeEvent({ id: eventId, timestamp: Date.now(), key: e.key, isBackspace: false, isCorrect });
+      }
     }
   };
 

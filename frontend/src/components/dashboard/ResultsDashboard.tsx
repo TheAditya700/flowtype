@@ -10,10 +10,14 @@ import FlowRadar from './FlowRadar';
 import RawStatsBox from './RawStatsBox';
 import KeyboardHeatmap from './KeyboardHeatmap';
 import ReplayChunkStrip from './ReplayChunkStrip';
+import SkillBars from './SkillBars';
+import LifetimeStatsBox from './LifetimeStatsBox';
+import ConfidenceWidget from './ConfidenceWidget';
 
 interface ResultsDashboardProps {
   keystrokeEvents: KeystrokeEvent[];
   wpm: number;
+  rawWpm: number;
   accuracy: number;
   duration: number;
   snippetText: string;
@@ -21,9 +25,22 @@ interface ResultsDashboardProps {
   onContinue: () => void;
 }
 
+interface StatsData {
+    wpm: number;
+    rawWpm: number;
+    time: number;
+    accuracy: number;
+    avgChunkLength: number;
+    errors: number;
+    kspc: number;
+    avgIki: number;
+    rolloverRate: number;
+}
+
 const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
   keystrokeEvents,
   wpm,
+  rawWpm,
   accuracy,
   duration,
   snippetText,
@@ -33,6 +50,7 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
   const { isAuthenticated, user } = useAuth();
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [sessionAnalytics, setSessionAnalytics] = useState<AnalyticsResponse | null>(null);
+  const [previousStats, setPreviousStats] = useState<StatsData | undefined>(undefined);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -64,6 +82,33 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                 snippetBoundaries: snippetBoundaries.length > 0 ? snippetBoundaries : undefined
             });
             setSessionAnalytics(result);
+            
+            // Handle Previous Stats Logic
+            const stored = localStorage.getItem('flowtype_last_run_stats');
+            if (stored) {
+                try {
+                    setPreviousStats(JSON.parse(stored));
+                } catch (e) {
+                    console.warn("Failed to parse previous stats", e);
+                }
+            }
+            
+            // Construct current stats object
+            const currentStats: StatsData = {
+                wpm,
+                rawWpm,
+                time: duration,
+                accuracy,
+                avgChunkLength: result.avgChunkLength,
+                errors: result.errors,
+                kspc: result.kspc,
+                avgIki: result.avgIki,
+                rolloverRate: result.rollover / 100
+            };
+            
+            // Save current as new previous for NEXT time
+            localStorage.setItem('flowtype_last_run_stats', JSON.stringify(currentStats));
+
         } catch (error) {
             console.error("Failed to fetch session analytics", error);
         }
@@ -72,7 +117,7 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
     if (keystrokeEvents.length > 0) {
         fetchAnalytics();
     }
-  }, [keystrokeEvents, wpm, accuracy, snippetLogs]);
+  }, [keystrokeEvents, wpm, accuracy, snippetLogs, rawWpm, duration]);
 
   if (!sessionAnalytics) {
     return (
@@ -83,13 +128,25 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
   }
 
   return (
-    <div className="p-6 max-w-[1200px] mx-auto flex flex-col gap-6">
+    <div className="p-6 max-w-[1800px] mx-auto flex flex-col gap-6">
       
-      {/* Top Row: Speed & Flow */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Grid Layout: 4 Columns */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        
+        {/* --- Row 1 --- */}
+        {/* Col 1: Skill Bars */}
+        <div className="lg:col-span-1">
+            <SkillBars 
+                accuracy={accuracy} 
+                consistency={sessionAnalytics.smoothness} 
+                speed={wpm} 
+            />
+        </div>
+        {/* Col 2-3: Speed Graph */}
         <div className="lg:col-span-2">
           <SpeedGraph data={sessionAnalytics.speedSeries} />
         </div>
+        {/* Col 4: Flow Radar */}
         <div className="lg:col-span-1">
           <FlowRadar metrics={{
               smoothness: sessionAnalytics.smoothness,
@@ -99,30 +156,65 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
               crossFluency: sessionAnalytics.crossFluency
           }} />
         </div>
-      </div>
 
-      {/* Middle Row: Stats & Heatmap */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        {/* --- Row 2 --- */}
+        {/* Col 1: Lifetime Stats */}
         <div className="lg:col-span-1">
-          <RawStatsBox stats={{
+            <LifetimeStatsBox 
+                stats={userProfile?.stats || { 
+                    total_sessions: 0, 
+                    avg_wpm: 0, 
+                    avg_accuracy: 0,
+                    total_time_typing: 0,
+                    best_wpm_15: 0,
+                    best_wpm_30: 0,
+                    best_wpm_60: 0,
+                    best_wpm_120: 0
+                }}
+            />
+        </div>
+        {/* Col 2: Raw Stats */}
+        <div className="lg:col-span-1">
+          <RawStatsBox 
+            stats={{
               wpm,
+              rawWpm,
+              time: duration,
               accuracy,
+              avgChunkLength: sessionAnalytics.avgChunkLength,
               errors: sessionAnalytics.errors,
               kspc: sessionAnalytics.kspc,
               avgIki: sessionAnalytics.avgIki,
               rolloverRate: sessionAnalytics.rollover / 100
-          }} />
+            }} 
+            previousStats={previousStats}
+          />
         </div>
+        {/* Col 3-4: Heatmap */}
         <div className="lg:col-span-2">
           <KeyboardHeatmap charStats={sessionAnalytics.heatmapData} />
         </div>
+
+
+        {/* --- Row 3 --- */}
+        {/* Col 1: Confidence Widget */}
+        <div className="lg:col-span-1">
+            <ConfidenceWidget 
+                left={sessionAnalytics.leftFluency} 
+                right={sessionAnalytics.rightFluency} 
+                cross={sessionAnalytics.crossFluency} 
+            />
+        </div>
+        {/* Col 2-4: Replay Strip */}
+        <div className="lg:col-span-3">
+            <ReplayChunkStrip events={sessionAnalytics.replayEvents} />
+        </div>
+
       </div>
 
-      {/* Bottom Row: Replay & Rollover */}
-      <ReplayChunkStrip events={sessionAnalytics.replayEvents} />
-
       {/* Controls */}
-      <div className="flex justify-center mt-8">
+      <div className="flex justify-center mt-4">
         <button 
           onClick={onContinue}
           className="flex items-center gap-2 px-12 py-4 bg-blue-600 text-white hover:bg-blue-500 transition font-bold shadow-lg shadow-blue-500/20 rounded-xl text-lg tracking-wide"

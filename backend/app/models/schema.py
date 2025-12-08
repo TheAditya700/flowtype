@@ -104,6 +104,11 @@ class UserStats(BaseModel):
     total_sessions: int
     avg_wpm: float
     avg_accuracy: float
+    total_time_typing: Optional[float] = 0.0
+    best_wpm_15: Optional[float] = 0.0
+    best_wpm_30: Optional[float] = 0.0
+    best_wpm_60: Optional[float] = 0.0
+    best_wpm_120: Optional[float] = 0.0
 
 class UserProfile(BaseModel):
     user_id: str
@@ -174,6 +179,7 @@ class AnalyticsResponse(BaseModel):
     kspc: float
     errors: int
     heatmapData: dict[str, dict[str, float]]
+    avgChunkLength: float
     
     # Time Series and Replay
     speedSeries: List[SpeedPoint]
