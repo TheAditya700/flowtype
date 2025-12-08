@@ -9,3 +9,5 @@ python-dotenv
 python-multipart
 redis
 rq
+passlib[bcrypt]
+python-jose[cryptography]

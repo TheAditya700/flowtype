@@ -2,535 +2,476 @@ import numpy as np
 import statistics
 import string
 from collections import defaultdict
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 
+# Standard QWERTY Layout Mapping
+KEY_HAND_MAP = {
+    'q': 'L', 'w': 'L', 'e': 'L', 'r': 'L', 't': 'L',
+    'a': 'L', 's': 'L', 'd': 'L', 'f': 'L', 'g': 'L',
+    'z': 'L', 'x': 'L', 'c': 'L', 'v': 'L', 'b': 'L',
+    'y': 'R', 'u': 'R', 'i': 'R', 'o': 'R', 'p': 'R',
+    'h': 'R', 'j': 'R', 'k': 'R', 'l': 'R', 'n': 'R', 'm': 'R'
+}
 
 class UserFeatureExtractor:
     """
-    Clean, layout-agnostic user feature extractor.
-    Keeps only skill-based signals:
-        - WPM / accuracy performance
-        - per-letter confidence (26 features)
-        - repetition difficulty
-        - n-gram difficulty
-        - word difficulty
-        - difficulty curve
-        - behavioral stability
+    Revised UserFeatureExtractor implementing the 57-feature set:
+    - Accuracy (8)
+    - Timing Consistency (12)
+    - Speed (2)
+    - Rollover (5)
+    - Chunking (3)
+    - Letter Confidence (26)
     """
 
     def __init__(self):
-        # Global performance stats
-        self.wpm_history = []
-        self.accuracy_history = []
-        self.session_count = 0
+        # --- A. ACCURACY (Global & Transition-wise) ---
+        self.total_presses = 0
+        self.total_errors = 0
+        self.backspace_count = 0
+        self.burst_error_count = 0  # Count of errors that are part of a burst (>=2 consecutive)
+        
+        # Transition stats: keys are 'L2L', 'R2R', 'cross', 'repeat'
+        self.trans_stats = {
+            'L2L': {'presses': 0, 'errors': 0},
+            'R2R': {'presses': 0, 'errors': 0},
+            'cross': {'presses': 0, 'errors': 0},
+            'repeat': {'presses': 0, 'errors': 0},
+        }
 
-        # Per-letter stats: {char -> {'presses': N, 'errors': N}}
+        # --- B. TIMING (Global & Transition-wise) ---
+        # Storing sum, sum_sq, count for online variance calculation
+        # Keys: 'global', 'L2L', 'R2R', 'cross', 'repeat'
+        self.iki_stats = {
+            'global': {'sum': 0.0, 'sum_sq': 0.0, 'count': 0},
+            'L2L': {'sum': 0.0, 'sum_sq': 0.0, 'count': 0},
+            'R2R': {'sum': 0.0, 'sum_sq': 0.0, 'count': 0},
+            'cross': {'sum': 0.0, 'sum_sq': 0.0, 'count': 0},
+            'repeat': {'sum': 0.0, 'sum_sq': 0.0, 'count': 0},
+        }
+        self.boundary_penalty_sum = 0.0 # Accumulator for boundary pauses
+
+        # --- C. SPEED ---
+        self.wpm_history = [] # Store last 20 session WPMs
+        self.effective_wpm_history = [] # (WPM * Accuracy)
+
+        # --- D. ROLLOVER ---
+        self.rollover_count = 0
+        self.rollover_depth_sum = 0.0 # ms of overlap
+        self.roll_trans_counts = {
+            'L2L': 0,
+            'R2R': 0,
+            'cross': 0
+        }
+
+        # --- E. CHUNKING ---
+        self.spike_count = 0
+        self.flow_intervals = 0 # Intervals that are NOT spikes
+        self.chunk_sum = 0 # Sum of chars per chunk (approx)
+        self.chunk_count = 0 # Number of chunks identified
+
+        # --- F. LETTER CONFIDENCE ---
         self.char_stats = {
             c: {'presses': 0, 'errors': 0}
             for c in string.ascii_lowercase
         }
-
-        # Bigram stats
-        self.bigram_stats = defaultdict(lambda: {'presses': 0, 'errors': 0})
-
-        # Trigram stats
-        self.trigram_stats = defaultdict(lambda: {'presses': 0, 'errors': 0})
-
-        # Repetition difficulty
-        self.double_letter_presses = 0
-        self.double_letter_errors = 0
-        self.triple_letter_presses = 0
-        self.triple_letter_errors = 0
-
-        # Difficulty buckets (1–10)
-        self.difficulty_bucket_stats = {
-            i: {'total': 0, 'wpm_sum': 0, 'accuracy_sum': 0}
-            for i in range(1, 11)
-        }
-
-        # Behavioral
-        self.snippet_completions = 0
-        self.snippet_quits = 0
-        self.ragequits = 0
-        self.session_lengths = []
-
-        # Word difficulty (rare/common)
-        self.rare_word_presses = 0
-        self.rare_word_errors = 0
-        self.common_word_presses = 0
-        self.common_word_errors = 0
-
+        
+        # Meta
+        self.session_count = 0
+        
         # Short-term history (sequence of 12-dim vectors)
         self.short_term_history = []
 
-    # ------------------------------------------------------------------
-    # Updating user stats
-    # ------------------------------------------------------------------
+    def get_hand(self, key: str) -> Optional[str]:
+        return KEY_HAND_MAP.get(key.lower())
 
     def update_from_session(self, session: Dict):
         """
-        session:
-        {
-            'keystroke_events': [...],
-            'wpm': float,
-            'accuracy': float,
-            'snippet_text': str,
-            'snippet_difficulty': float,
-            'completed': bool,
-            'quit_progress': float
-        }
+        Process a completed session to update long-term stats.
         """
         # 1. Compute and store short-term vector for this session
-        st_vec = self.compute_short_term_features(session)
-        # Store as list for JSON serialization
-        self.short_term_history.append(st_vec.tolist())
-        
-        # Keep history reasonable size (e.g. last 50)
-        if len(self.short_term_history) > 50:
-            self.short_term_history.pop(0)
+        try:
+            st_vec = self.compute_short_term_features(session)
+            self.short_term_history.append(st_vec.tolist())
+            if len(self.short_term_history) > 50:
+                self.short_term_history.pop(0)
+        except Exception as e:
+            # Fallback or log if needed
+            print(f"Error computing short-term features: {e}")
+
+        events = session.get('keystroke_events', [])
+        if not events:
+            return
 
         self.session_count += 1
-        self.wpm_history.append(session['wpm'])
-        self.accuracy_history.append(session['accuracy'])
-        self.session_lengths.append(len(session['keystroke_events']))
-
-        # Completion behavior
-        if session.get('completed', True):
-            self.snippet_completions += 1
-        else:
-            self.snippet_quits += 1
-            if session.get('quit_progress', 1.0) < 0.15:
-                self.ragequits += 1
-
-        # Difficulty bucket stats
-        bucket = int(session['snippet_difficulty'])
-        stats = self.difficulty_bucket_stats[bucket]
-        stats['total'] += 1
-        stats['wpm_sum'] += session['wpm']
-        stats['accuracy_sum'] += session['accuracy']
-
-        events = session['keystroke_events']
-        prev_char = None
-        prev_prev_char = None
-
-        # Process keystrokes
-        for e in events:
-            if e.get('is_backspace', False):
-                continue
-
-            char = e['key'].lower()
-            if char not in string.ascii_lowercase:
-                continue
-
-            is_correct = e.get('is_correct', True)
-
-            # Per-letter stats
-            self.char_stats[char]['presses'] += 1
-            if not is_correct:
-                self.char_stats[char]['errors'] += 1
-
-            # Bigram stats
-            if prev_char is not None:
-                bigram = prev_char + char
-                self.bigram_stats[bigram]['presses'] += 1
-                if not is_correct:
-                    self.bigram_stats[bigram]['errors'] += 1
-
-            # Trigram stats
-            if prev_prev_char is not None:
-                trigram = prev_prev_char + prev_char + char
-                self.trigram_stats[trigram]['presses'] += 1
-                if not is_correct:
-                    self.trigram_stats[trigram]['errors'] += 1
-
-            # Repetition stats
-            if prev_char == char:
-                self.double_letter_presses += 1
-                if not is_correct:
-                    self.double_letter_errors += 1
-
-                if prev_prev_char == char:
-                    self.triple_letter_presses += 1
-                    if not is_correct:
-                        self.triple_letter_errors += 1
-
-            prev_prev_char = prev_char
-            prev_char = char
-
-    # ------------------------------------------------------------------
-    # Compute feature vector
-    # ------------------------------------------------------------------
-
-    def compute_user_features(self, window='recent') -> np.ndarray:
-        """
-        Returns a feature vector including:
-            - performance stats
-            - per-letter confidence (26)
-            - repetition difficulty
-            - n-gram difficulty
-            - word difficulty
-            - difficulty curve
-            - behavioral traits
-        """
-
-        # Select window
-        if window == 'recent':
-            wpm_data = self.wpm_history[-20:]
-            acc_data = self.accuracy_history[-20:]
-        else:
-            wpm_data = self.wpm_history
-            acc_data = self.accuracy_history
-
-        # 1. PERFORMANCE ------------------------------------------------
-        wpm_avg = np.mean(wpm_data) if wpm_data else 40.0
-        wpm_best = max(wpm_data) if wpm_data else 40.0
-        wpm_std = np.std(wpm_data) if len(wpm_data) > 1 else 10.0
-
-        acc_avg = np.mean(acc_data) if acc_data else 0.85
-        acc_std = np.std(acc_data) if len(acc_data) > 1 else 0.1
-
-        # 2. PER-LETTER CONFIDENCE (26) --------------------------------
-        letter_conf = []
-        for c in string.ascii_lowercase:
-            presses = self.char_stats[c]['presses']
-            errors = self.char_stats[c]['errors']
-            conf = 1 - (errors / presses) if presses > 10 else 0.5
-            letter_conf.append(conf)
-
-        # 3. REPETITIONS ------------------------------------------------
-        double_conf = 1 - (self.double_letter_errors / self.double_letter_presses) \
-            if self.double_letter_presses > 0 else 0.7
-
-        triple_conf = 1 - (self.triple_letter_errors / self.triple_letter_presses) \
-            if self.triple_letter_presses > 0 else 0.7
-
-        # 4. N-GRAM TOLERANCE ------------------------------------------
-        # Approximation: rare = low frequency in your corpus
-        rare_bigram_errors = sum(v['errors'] for k, v in self.bigram_stats.items()
-                                 if len(k) == 2 and v['presses'] < 5)
-        rare_bigram_presses = sum(v['presses'] for k, v in self.bigram_stats.items()
-                                  if len(k) == 2 and v['presses'] < 5)
-
-        rare_bigram_conf = 1 - (rare_bigram_errors / rare_bigram_presses) \
-            if rare_bigram_presses > 0 else 0.7
-
-        rare_trigram_errors = sum(v['errors'] for k, v in self.trigram_stats.items()
-                                  if len(k) == 3 and v['presses'] < 5)
-        rare_trigram_presses = sum(v['presses'] for k, v in self.trigram_stats.items()
-                                   if len(k) == 3 and v['presses'] < 5)
-
-        rare_trigram_conf = 1 - (rare_trigram_errors / rare_trigram_presses) \
-            if rare_trigram_presses > 0 else 0.7
-
-        # 5. DIFFICULTY CURVE ------------------------------------------
-        comfort = 0.5
-        struggle = 1.0
-
-        best_acc = 0
-        for diff, stats in self.difficulty_bucket_stats.items():
-            if stats['total'] > 0:
-                avg_acc = stats['accuracy_sum'] / stats['total']
-                if avg_acc > best_acc:
-                    best_acc = avg_acc
-                    comfort = diff / 10.0
-
-        for diff, stats in sorted(self.difficulty_bucket_stats.items()):
-            if stats['total'] > 0:
-                avg_acc = stats['accuracy_sum'] / stats['total']
-                if avg_acc < 0.75:  # struggle threshold
-                    struggle = diff / 10.0
-                    break
-
-        # 6. BEHAVIOR ---------------------------------------------------
-        total_snippets = self.snippet_completions + self.snippet_quits
-        completion_rate = self.snippet_completions / total_snippets if total_snippets > 0 else 1.0
-        ragequit_rate = self.ragequits / max(1, self.snippet_quits)
-
-        avg_session_length = np.mean(self.session_lengths) if self.session_lengths else 0.0
-
-        # Assemble flat feature vector
-        vec = np.array(
-            [
-                # Performance
-                wpm_avg / 100.0,
-                wpm_best / 100.0,
-                wpm_std / 50.0,
-                acc_avg,
-                acc_std,
-
-                # Repetitions
-                double_conf,
-                triple_conf,
-
-                # N-gram tolerance
-                rare_bigram_conf,
-                rare_trigram_conf,
-
-                # Difficulty curve
-                comfort,
-                struggle,
-
-                # Behavior
-                completion_rate,
-                1 - ragequit_rate,
-                avg_session_length / 200.0,
-            ] +
-            letter_conf,     # 26-dim
-            dtype=np.float32
-        )
-
-        # Normalize to unit vector
-        norm = np.linalg.norm(vec)
-        if norm > 0:
-            vec = vec / norm
-
-        return vec
-
-    def get_difficulty_boundaries(self) -> Tuple[float, float]:
-        """
-        Returns (comfort, struggle) difficulty levels (0.0-1.0) based on history.
-        """
-        comfort = 0.5
-        struggle = 1.0
-
-        best_acc = 0
-        for diff, stats in self.difficulty_bucket_stats.items():
-            if stats['total'] > 0:
-                avg_acc = stats['accuracy_sum'] / stats['total']
-                if avg_acc > best_acc:
-                    best_acc = avg_acc
-                    comfort = diff / 10.0
-
-        for diff, stats in sorted(self.difficulty_bucket_stats.items()):
-            if stats['total'] > 0:
-                avg_acc = stats['accuracy_sum'] / stats['total']
-                if avg_acc < 0.75:  # struggle threshold
-                    struggle = diff / 10.0
-                    break
         
-        return comfort, struggle
+        # Update Speed History
+        wpm = session.get('wpm', 0.0)
+        acc = session.get('accuracy', 1.0) # 0-1
+        self.wpm_history.append(wpm)
+        self.effective_wpm_history.append(wpm * acc)
+        if len(self.wpm_history) > 20:
+            self.wpm_history.pop(0)
+            self.effective_wpm_history.pop(0)
 
-    def feature_dim(self) -> int:
-        return 14 + 26
+        # Process Keystrokes
+        prev_event = None
+        consecutive_errors = 0
+        
+        # Chunking helpers
+        session_ikis = []
+        
+        for e in events:
+            key = e.get('key', '')
+            # Skip non-char keys for most stats, but count backspaces
+            if e.get('isBackspace', False):
+                self.backspace_count += 1
+                consecutive_errors = 0 # Reset burst on backspace? Or continue? Usually backspace ends the "typing" of that error.
+                prev_event = None # Reset context on backspace to avoid noisy IKIs
+                continue
+            
+            # Filter for valid layout keys for strict IKI/hand analysis
+            if len(key) != 1:
+                continue
+            
+            is_correct = e.get('isCorrect', True)
+            timestamp = e.get('timestamp', 0)
+            keyup_ts = e.get('keyup_timestamp')
+            
+            # 1. Global Accuracy
+            self.total_presses += 1
+            if not is_correct:
+                self.total_errors += 1
+                consecutive_errors += 1
+                if consecutive_errors >= 2:
+                    # If this is the 2nd error, add 2. If 3rd, add 1 (cumulatively counts all burst errors)
+                    if consecutive_errors == 2:
+                        self.burst_error_count += 2
+                    else:
+                        self.burst_error_count += 1
+            else:
+                consecutive_errors = 0
 
+            # 2. Letter Stats
+            char = key.lower()
+            if char in self.char_stats:
+                self.char_stats[char]['presses'] += 1
+                if not is_correct:
+                    self.char_stats[char]['errors'] += 1
+
+            # 3. Transitions (require previous event)
+            if prev_event and prev_event.get('key'):
+                prev_key = prev_event['key']
+                prev_ts = prev_event['timestamp']
+                prev_keyup = prev_event.get('keyup_timestamp')
+                
+                iki = max(0, timestamp - prev_ts)
+                session_ikis.append(iki)
+                
+                # Hand Transition Logic
+                h1 = self.get_hand(prev_key)
+                h2 = self.get_hand(key)
+                
+                trans_type = None
+                if prev_key == key:
+                    trans_type = 'repeat'
+                elif h1 and h2:
+                    if h1 != h2:
+                        trans_type = 'cross'
+                    elif h1 == 'L':
+                        trans_type = 'L2L'
+                    else:
+                        trans_type = 'R2R'
+                
+                if trans_type:
+                    # Update Transition Accuracy
+                    self.trans_stats[trans_type]['presses'] += 1
+                    if not is_correct:
+                        self.trans_stats[trans_type]['errors'] += 1
+                    
+                    # Update Transition Timing
+                    self.iki_stats[trans_type]['sum'] += iki
+                    self.iki_stats[trans_type]['sum_sq'] += (iki ** 2)
+                    self.iki_stats[trans_type]['count'] += 1
+                
+                # Update Global Timing
+                self.iki_stats['global']['sum'] += iki
+                self.iki_stats['global']['sum_sq'] += (iki ** 2)
+                self.iki_stats['global']['count'] += 1
+                
+                # 4. Rollover
+                # Rollover: Current Down < Prev Up
+                if prev_keyup and timestamp < prev_keyup:
+                    self.rollover_count += 1
+                    overlap = prev_keyup - timestamp
+                    self.rollover_depth_sum += overlap
+                    
+                    if trans_type and trans_type in self.roll_trans_counts:
+                        self.roll_trans_counts[trans_type] += 1
+            
+            prev_event = e
+
+        # 5. Chunking (Session Level Processing)
+        if session_ikis:
+            median_iki = statistics.median(session_ikis)
+            # Simple chunk definition: Spike > 1.8 * median
+            threshold = 1.8 * median_iki if median_iki > 0 else 300
+            
+            current_chunk_len = 0
+            
+            for iki in session_ikis:
+                if iki > threshold:
+                    self.spike_count += 1
+                    # End of chunk
+                    if current_chunk_len > 0:
+                        self.chunk_count += 1
+                        self.chunk_sum += current_chunk_len
+                        current_chunk_len = 0 # Reset for new chunk
+                else:
+                    self.flow_intervals += 1
+                    current_chunk_len += 1
+            
+            # Count the final chunk
+            if current_chunk_len > 0:
+                self.chunk_count += 1
+                self.chunk_sum += current_chunk_len
+    
     def compute_short_term_features(self, session_data: dict) -> np.ndarray:
         """
-        Compute short-term snippet-level behavioral features
-        from a single session (one snippet attempt).
-
-        Returns: np.ndarray of shape (12,)
+        Compute short-term snippet-level behavioral features (12-dim).
+        Used for the RNN/GRU sequence.
         """
-
         events = session_data.get("keystroke_events", [])
         wpm = session_data.get("wpm", 40.0)
-        accuracy = session_data.get("accuracy", 0.85)  # assume 0–1; adjust if you're using 0–100
+        accuracy = session_data.get("accuracy", 0.85)
         completed = session_data.get("completed", True)
         quit_progress = session_data.get("quit_progress", 1.0)
 
-        # ----------------------------
         # Latency stats
-        # ----------------------------
-        latencies = [
-            e.get("latency", 0.0)
-            for e in events
-            if not e.get("is_backspace", False) and e.get("latency", 0.0) > 0
-        ]
-
+        latencies = []
+        prev_ts = 0
+        for i, e in enumerate(events):
+            if i > 0 and not e.get("isBackspace", False):
+                lat = e.get("timestamp", 0) - prev_ts
+                if lat > 0: latencies.append(lat)
+            prev_ts = e.get("timestamp", 0)
+            
         if latencies:
             lat_mean = float(np.mean(latencies))
             lat_std = float(np.std(latencies)) if len(latencies) > 1 else 0.0
             lat_p95 = float(np.percentile(latencies, 95))
         else:
-            lat_mean = 300.0
-            lat_std = 0.0
-            lat_p95 = 300.0
+            lat_mean = 300.0; lat_std = 0.0; lat_p95 = 300.0
 
-        # normalize roughly to [0,1]-ish ranges
         latency_mean_norm = lat_mean / 500.0
         latency_std_norm = lat_std / 300.0
         latency_p95_norm = lat_p95 / 800.0
 
-        # ----------------------------
-        # Repetition & burst errors
-        # ----------------------------
+        # Burst / Repetition
         total_errors = 0
         repetition_errors = 0
         burst_errors = 0
-
         prev_char = None
         prev_correct = True
-        current_burst_len = 0
-
+        current_burst = 0
+        
         for e in events:
-            if e.get("is_backspace", False):
-                continue
-
+            if e.get("isBackspace", False): continue
             char = e.get("key", "").lower()
-            is_correct = e.get("is_correct", True)
-
+            is_correct = e.get("isCorrect", True)
+            
             if not is_correct:
                 total_errors += 1
-
-            # repetition: same char as previous and incorrect
-            if prev_char is not None and char == prev_char and not is_correct:
-                repetition_errors += 1
-
-            # error bursts: consecutive incorrect keypresses
-            if not is_correct:
-                if not prev_correct:
-                    current_burst_len += 1
-                else:
-                    current_burst_len = 1
+                if prev_char == char: repetition_errors += 1
+                if not prev_correct: current_burst += 1
+                else: current_burst = 1
             else:
-                if current_burst_len >= 2:
-                    burst_errors += current_burst_len
-                current_burst_len = 0
-
+                if current_burst >= 2: burst_errors += current_burst
+                current_burst = 0
+            
             prev_char = char
             prev_correct = is_correct
+            
+        if current_burst >= 2: burst_errors += current_burst
+        
+        rep_err_rate = repetition_errors / max(1, total_errors)
+        burst_err_rate = burst_errors / max(1, total_errors)
+        error_rate = 1.0 - accuracy
 
-        # if a burst was ongoing at the end
-        if current_burst_len >= 2:
-            burst_errors += current_burst_len
+        # Baselines
+        wpm_base = np.mean(self.wpm_history) if self.wpm_history else 40.0
+        wpm_delta = (wpm - wpm_base) / max(10, wpm_base)
+        acc_delta = accuracy - 0.9 # approx
 
-        total_errors = max(total_errors, 1)  # avoid division by zero
+        features = [
+            wpm / 100.0, accuracy, error_rate,
+            latency_mean_norm, latency_std_norm, latency_p95_norm,
+            rep_err_rate, burst_err_rate,
+            0.0 if completed else 1.0, # quit
+            1.0 if (not completed and quit_progress < 0.15) else 0.0, # ragequit
+            wpm_delta, acc_delta
+        ]
+        return np.array(features, dtype=np.float32)
 
-        repetition_error_rate = repetition_errors / total_errors if total_errors > 0 else 0.0
-        burst_error_rate = burst_errors / total_errors if total_errors > 0 else 0.0
+    def compute_user_features(self) -> np.ndarray:
+        """
+        Returns the 57-dimensional feature vector.
+        """
+        # Helpers
+        def safe_div(n, d, default=0.0):
+            return n / d if d > 0 else default
 
-        # ----------------------------
-        # Baseline deltas (vs recent history)
-        # ----------------------------
-        if self.wpm_history:
-            recent_wpm = self.wpm_history[-20:] if len(self.wpm_history) > 20 else self.wpm_history
-            wpm_baseline = float(np.mean(recent_wpm))
-        else:
-            wpm_baseline = 40.0
+        def get_iki_stats(key):
+            s = self.iki_stats[key]
+            if s['count'] == 0:
+                return 0.0, 0.0
+            mean = s['sum'] / s['count']
+            var = (s['sum_sq'] / s['count']) - (mean ** 2)
+            std = np.sqrt(max(0, var))
+            cv = safe_div(std, mean)
+            return mean, cv
 
-        if self.accuracy_history:
-            recent_acc = self.accuracy_history[-20:] if len(self.accuracy_history) > 20 else self.accuracy_history
-            acc_baseline = float(np.mean(recent_acc))
-        else:
-            acc_baseline = 0.85
+        # --- A. ACCURACY (8) ---
+        accuracy = 1.0 - safe_div(self.total_errors, self.total_presses)
+        error_rate = safe_div(self.total_errors, self.total_presses)
+        # KSPC (KeyStrokes Per Character) - requires knowing "target" chars. 
+        # total_presses / (total_presses - backspaces). Assuming finalized text length approx = presses - backspaces.
+        # Let's approximate KSPC as 1 + error_rate + backspace_rate roughly.
+        kspc = safe_div(self.total_presses, (self.total_presses - self.backspace_count - self.total_errors), default=1.0)
+        
+        backspace_ratio = safe_div(self.backspace_count, self.total_presses)
+        burst_error_rate = safe_div(self.burst_error_count, self.total_errors) # Fraction of errors that are bursts
+        
+        acc_L2L = 1.0 - safe_div(self.trans_stats['L2L']['errors'], self.trans_stats['L2L']['presses'])
+        acc_R2R = 1.0 - safe_div(self.trans_stats['R2R']['errors'], self.trans_stats['R2R']['presses'])
+        acc_cross = 1.0 - safe_div(self.trans_stats['cross']['errors'], self.trans_stats['cross']['presses'])
+        acc_repeat = 1.0 - safe_div(self.trans_stats['repeat']['errors'], self.trans_stats['repeat']['presses'])
+        
+        # --- B. TIMING (12) ---
+        iki_mean, iki_cv = get_iki_stats('global')
+        iki_std = iki_mean * iki_cv
+        
+        iki_L2L_mean, iki_L2L_cv = get_iki_stats('L2L')
+        iki_R2R_mean, iki_R2R_cv = get_iki_stats('R2R')
+        iki_cross_mean, iki_cross_cv = get_iki_stats('cross')
+        iki_repeat_mean, iki_repeat_cv = get_iki_stats('repeat')
+        
+        boundary_penalty = 0.5 # Placeholder (Requires specific boundary tracking logic not fully in update loop yet)
 
-        # assume accuracy is 0–1; adjust denominator if you store 0–100
-        wpm_delta = (wpm - wpm_baseline) / max(10.0, wpm_baseline)
-        acc_delta = (accuracy - acc_baseline)  # already ~[-1,1] if in [0,1]
+        # --- C. SPEED (2) ---
+        wpm_raw = np.mean(self.wpm_history) if self.wpm_history else 0.0
+        wpm_effective = np.mean(self.effective_wpm_history) if self.effective_wpm_history else 0.0
 
-        # ----------------------------
-        # Quit / ragequit
-        # ----------------------------
-        quit_flag = 0.0 if completed else 1.0
-        ragequit_flag = 1.0 if (not completed and quit_progress < 0.15) else 0.0
+        # --- D. ROLLOVER (5) ---
+        # Rate: Rollover counts / Total relevant transitions
+        total_transitions = self.iki_stats['global']['count']
+        rollover_rate = safe_div(self.rollover_count, total_transitions)
+        rollover_depth_mean = safe_div(self.rollover_depth_sum, self.rollover_count)
+        
+        roll_L2L_rate = safe_div(self.roll_trans_counts['L2L'], self.trans_stats['L2L']['presses'])
+        roll_R2R_rate = safe_div(self.roll_trans_counts['R2R'], self.trans_stats['R2R']['presses'])
+        roll_cross_rate = safe_div(self.roll_trans_counts['cross'], self.trans_stats['cross']['presses'])
 
-        # ----------------------------
-        # Assemble 12-dim short-term vector
-        # ----------------------------
-        error_rate = 1.0 - accuracy  # if accuracy in [0,1]
+        # --- E. CHUNKING (3) ---
+        total_intervals = self.spike_count + self.flow_intervals
+        spike_rate = safe_div(self.spike_count, total_intervals)
+        flow_ratio = 1.0 - spike_rate
+        avg_chars_per_chunk = safe_div(self.chunk_sum, self.chunk_count, default=1.0)
 
-        features = np.array([
-            # absolute performance
-            wpm / 100.0,          # wpm_norm
-            accuracy,             # accuracy
-            error_rate,           # error_rate
+        # --- F. LETTER CONFIDENCE (26) ---
+        letter_confs = []
+        for c in string.ascii_lowercase:
+            s = self.char_stats[c]
+            # Confidence: 1 - error_rate, damped by low sample size
+            presses = s['presses']
+            errors = s['errors']
+            if presses < 5:
+                conf = 0.5 # Neutral confidence for unseen
+            else:
+                conf = 1.0 - (errors / presses)
+            letter_confs.append(conf)
 
-            # smoothness / hesitation
-            latency_mean_norm,
-            latency_std_norm,
-            latency_p95_norm,
+        # Vector Assembly
+        features = [
+            # Accuracy (8)
+            accuracy, error_rate, kspc, backspace_ratio, burst_error_rate,
+            acc_L2L, acc_R2R, acc_cross, acc_repeat,
+            
+            # Timing (12)
+            iki_mean, iki_std, iki_cv,
+            iki_L2L_mean, iki_L2L_cv,
+            iki_R2R_mean, iki_R2R_cv,
+            iki_cross_mean, iki_cross_cv,
+            iki_repeat_mean, iki_repeat_cv,
+            boundary_penalty,
+            
+            # Speed (2)
+            wpm_raw, wpm_effective,
+            
+            # Rollover (5)
+            rollover_rate, rollover_depth_mean,
+            roll_L2L_rate, roll_R2R_rate, roll_cross_rate,
+            
+            # Chunking (3)
+            spike_rate, flow_ratio, avg_chars_per_chunk
+        ] + letter_confs # (26)
+        
+        return np.array(features, dtype=np.float32)
 
-            # structure-specific struggle
-            repetition_error_rate,
-            burst_error_rate,
-
-            # frustration signals
-            quit_flag,
-            ragequit_flag,
-
-            # relative to baseline
-            wpm_delta,
-            acc_delta,
-        ], dtype=np.float32)
-
-        return features
-
-
-    # ------------------------------------------------------------------
-    # Serialization
-    # ------------------------------------------------------------------
-    
     def to_dict(self) -> Dict:
-        """
-        Serializes the extractor state to a dictionary for DB storage.
-        """
+        """Serialize state."""
         return {
-            "wpm_history": self.wpm_history,
-            "accuracy_history": self.accuracy_history,
-            "session_count": self.session_count,
-            "char_stats": self.char_stats,
-            "bigram_stats": {k: v for k, v in self.bigram_stats.items()}, # default_dict to dict
-            "trigram_stats": {k: v for k, v in self.trigram_stats.items()},
-            "double_letter_presses": self.double_letter_presses,
-            "double_letter_errors": self.double_letter_errors,
-            "triple_letter_presses": self.triple_letter_presses,
-            "triple_letter_errors": self.triple_letter_errors,
-            "difficulty_bucket_stats": self.difficulty_bucket_stats,
-            "snippet_completions": self.snippet_completions,
-            "snippet_quits": self.snippet_quits,
-            "ragequits": self.ragequits,
-            "session_lengths": self.session_lengths,
-            "rare_word_presses": self.rare_word_presses,
-            "rare_word_errors": self.rare_word_errors,
-            "common_word_presses": self.common_word_presses,
-            "common_word_errors": self.common_word_errors,
-            "short_term_history": self.short_term_history,
+            'total_presses': self.total_presses,
+            'total_errors': self.total_errors,
+            'backspace_count': self.backspace_count,
+            'burst_error_count': self.burst_error_count,
+            'trans_stats': self.trans_stats,
+            'iki_stats': self.iki_stats,
+            'boundary_penalty_sum': self.boundary_penalty_sum,
+            'wpm_history': self.wpm_history,
+            'effective_wpm_history': self.effective_wpm_history,
+            'rollover_count': self.rollover_count,
+            'rollover_depth_sum': self.rollover_depth_sum,
+            'roll_trans_counts': self.roll_trans_counts,
+            'spike_count': self.spike_count,
+            'flow_intervals': self.flow_intervals,
+            'chunk_sum': self.chunk_sum,
+            'chunk_count': self.chunk_count,
+            'char_stats': self.char_stats,
+            'session_count': self.session_count,
+            'short_term_history': self.short_term_history
         }
 
     @classmethod
     def from_dict(cls, data: Dict) -> "UserFeatureExtractor":
-        """
-        Restores extractor state from a dictionary.
-        """
-        extractor = cls()
+        """Deserialize state."""
+        e = cls()
         if not data:
-            return extractor
-
-        extractor.wpm_history = data.get("wpm_history", [])
-        extractor.accuracy_history = data.get("accuracy_history", [])
-        extractor.session_count = data.get("session_count", 0)
+            return e
+            
+        e.total_presses = data.get('total_presses', 0)
+        e.total_errors = data.get('total_errors', 0)
+        e.backspace_count = data.get('backspace_count', 0)
+        e.burst_error_count = data.get('burst_error_count', 0)
         
-        # Char stats
-        saved_char_stats = data.get("char_stats", {})
-        for c, stats in saved_char_stats.items():
-            if c in extractor.char_stats:
-                extractor.char_stats[c] = stats
-
-        # N-grams (convert back to defaultdict)
-        extractor.bigram_stats = defaultdict(lambda: {'presses': 0, 'errors': 0}, data.get("bigram_stats", {}))
-        extractor.trigram_stats = defaultdict(lambda: {'presses': 0, 'errors': 0}, data.get("trigram_stats", {}))
-
-        extractor.double_letter_presses = data.get("double_letter_presses", 0)
-        extractor.double_letter_errors = data.get("double_letter_errors", 0)
-        extractor.triple_letter_presses = data.get("triple_letter_presses", 0)
-        extractor.triple_letter_errors = data.get("triple_letter_errors", 0)
-
-        # Difficulty buckets (ensure int keys)
-        saved_buckets = data.get("difficulty_bucket_stats", {})
-        for k, v in saved_buckets.items():
-            extractor.difficulty_bucket_stats[int(k)] = v
-
-        extractor.snippet_completions = data.get("snippet_completions", 0)
-        extractor.snippet_quits = data.get("snippet_quits", 0)
-        extractor.ragequits = data.get("ragequits", 0)
-        extractor.session_lengths = data.get("session_lengths", [])
+        e.trans_stats = data.get('trans_stats', e.trans_stats)
+        e.iki_stats = data.get('iki_stats', e.iki_stats)
+        e.boundary_penalty_sum = data.get('boundary_penalty_sum', 0.0)
         
-        extractor.rare_word_presses = data.get("rare_word_presses", 0)
-        extractor.rare_word_errors = data.get("rare_word_errors", 0)
-        extractor.common_word_presses = data.get("common_word_presses", 0)
-        extractor.common_word_errors = data.get("common_word_errors", 0)
+        e.wpm_history = data.get('wpm_history', [])
+        e.effective_wpm_history = data.get('effective_wpm_history', [])
         
-        extractor.short_term_history = data.get("short_term_history", [])
-
-        return extractor
-    
-    
+        e.rollover_count = data.get('rollover_count', 0)
+        e.rollover_depth_sum = data.get('rollover_depth_sum', 0.0)
+        e.roll_trans_counts = data.get('roll_trans_counts', e.roll_trans_counts)
+        
+        e.spike_count = data.get('spike_count', 0)
+        e.flow_intervals = data.get('flow_intervals', 0)
+        e.chunk_sum = data.get('chunk_sum', 0)
+        e.chunk_count = data.get('chunk_count', 0)
+        
+        e.char_stats = data.get('char_stats', e.char_stats)
+        e.session_count = data.get('session_count', 0)
+        e.short_term_history = data.get('short_term_history', [])
+        
+        return e

@@ -1,6 +1,7 @@
 import React from 'react';
-import { User, Palette } from 'lucide-react';
+import { Palette } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import UserMenu from './UserMenu'; // Import UserMenu
 
 interface HeaderProps {
   isPaused: boolean;
@@ -27,9 +28,7 @@ const Header: React.FC<HeaderProps> = ({ isPaused }) => {
                 <option value="gruvbox">Gruvbox</option>
             </select>
         </div>
-        <button className="flex items-center gap-2 bg-container p-2 rounded-lg text-text hover:text-primary transition">
-            <User size={18} />
-        </button>
+        <UserMenu /> {/* Use UserMenu component */}
       </div>
     </header>
   );

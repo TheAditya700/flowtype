@@ -4,7 +4,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import SessionLocal
-from app.models.schema import SessionCreateRequest, SessionResponse, UserStateUpdate
+from app.models.schema import SessionCreateRequest, SessionResponse
 from app.models.db_models import TypingSession, SnippetUsage, KeystrokeEventDB, User
 from app.ml.user_features import UserFeatureExtractor
 from sqlalchemy.sql import func
@@ -30,7 +30,7 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
       - Saves snippet usage rows
       - Saves keystrokes
       - Updates User long-term stats (via UserFeatureExtractor)
-      - Computes reward + next user state
+      - Computes reward
     """
     try:
         # -----------------------------------------------------
@@ -108,13 +108,14 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
             extractor = UserFeatureExtractor.from_dict(user.features or {})
             
             # Prepare session dict for extractor
-            # Note: UserFeatureExtractor expects dict-based events
+            # UserFeatureExtractor expects dict-based events with keys matching KeystrokeEvent schema
             events_dicts = [
                 {
                     "key": k.key,
-                    "is_backspace": k.isBackspace,
-                    "is_correct": k.isCorrect,
-                    "timestamp": k.timestamp
+                    "isBackspace": k.isBackspace,
+                    "isCorrect": k.isCorrect,
+                    "timestamp": k.timestamp,
+                    "keyup_timestamp": k.keyup_timestamp
                 } 
                 for k in request.keystrokeData
             ]
@@ -139,37 +140,9 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
         db.commit()
         db.refresh(db_session)
 
-        # -----------------------------------------------------
-        # Update Rolling Stats (EMA)
-        # -----------------------------------------------------
-        alpha = 0.3
-        
-        # WPM
-        old_wpm = request.user_state.rollingWpm
-        new_rolling_wpm = (alpha * request.wpm) + ((1 - alpha) * old_wpm)
-        
-        # Accuracy
-        old_acc = request.user_state.rollingAccuracy
-        new_rolling_acc = (alpha * request.accuracy) + ((1 - alpha) * old_acc)
-        
-        # Backspace Rate
-        current_bs_rate = sum(1 for k in request.keystrokeData if k.isBackspace) / max(1, len(request.keystrokeData))
-        old_bs = request.user_state.backspaceRate
-        new_rolling_bs = (alpha * current_bs_rate) + ((1 - alpha) * old_bs)
-        
-        next_state = UserStateUpdate(
-            hiddenState=[], # Stateless architecture now
-            rollingWpm=round(new_rolling_wpm, 2),
-            rollingAccuracy=round(new_rolling_acc, 4),
-            backspaceRate=round(new_rolling_bs, 4),
-            hesitationCount=request.user_state.hesitationCount, 
-            currentDifficulty=request.user_state.currentDifficulty
-        )
-
         response = SessionResponse(
             session_id=str(db_session.id),
-            reward=reward,
-            next_state=next_state
+            reward=reward
         )
 
         return response

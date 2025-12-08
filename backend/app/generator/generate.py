@@ -80,11 +80,18 @@ def generate_word_feature_vectors(words):
 # ------------------------------------------------------------
 def generate_snippets(words, n=20000, min_len=5, max_len=8):
     snippets = []
+    
+    attempts = 0
+    max_attempts = n * 5 # Prevent infinite loops
 
-    for _ in range(n):
+    while len(snippets) < n and attempts < max_attempts:
+        attempts += 1
         k = random.randint(min_len, max_len)
         ws = random.sample(words, k)
         text = " ".join(ws)
+
+        if len(text) > 60:
+            continue
 
         feats = compute_difficulty_features(text)
 

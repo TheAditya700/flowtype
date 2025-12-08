@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     
     # API
     cors_origins: list[str] = ["*"]
+
+    # Auth
+    secret_key: str
+    access_token_expire_minutes: int = 30 # Default to 30 minutes
     
     class Config:
         env_file = ".env"

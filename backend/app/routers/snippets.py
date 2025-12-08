@@ -3,10 +3,12 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.models.schema import SnippetRetrieveRequest, SnippetResponse
 from app.models.db_models import User
-from app.ml.user_encoder import get_user_embedding
-from app.ml.ranker import rank_snippets
+# from app.ml.user_encoder import get_user_embedding # REMOVED
+from app.ml.inference import rank_snippets # UPDATED
 from typing import List, Dict, Any
 import time
+import uuid 
+import numpy as np # Added numpy
 
 router = APIRouter()
 
@@ -25,11 +27,6 @@ def retrieve_snippets(
 ):
     """
     Retrieves and ranks snippets based on user state and returns rolling WPM windows.
-
-    The frontend may optionally include a list of keystroke timestamps in
-    `request.user_state.keystroke_timestamps` (list of epoch-second floats). If
-    present, rolling WPM for windows [15,30,45,60] seconds will be computed from
-    those timestamps. Otherwise the endpoint will fall back to `user_state.rollingWpm`.
     """
     # helper to compute rolling WPM from timestamps
     def compute_rolling_wpm(timestamps: List[float], windows: List[int] = [15, 30, 45, 60]) -> Dict[str, float]:
@@ -46,66 +43,70 @@ def retrieve_snippets(
     # 1. Fetch User Stats from DB (Long Term Context)
     user_features = {}
     if request.user_state.user_id:
-        user = db.query(User).filter(User.id == request.user_state.user_id).first()
-        if user:
-            user_features = user.features or {}
+        try:
+            user_uuid = uuid.UUID(request.user_state.user_id) 
+            user = db.query(User).filter(User.id == user_uuid).first()
+            if user:
+                user_features = user.features or {}
+        except ValueError:
+            pass 
 
-    # 2. Encode user state
-    user_embedding = get_user_embedding(request.user_state, user_features_dict=user_features)
-    
-    # 3. Access the vector store from the app state and search
+    # 2. Retrieve Candidates (Heuristic / Metadata Search)
+    # Since we moved to manual features, we don't have a shared embedding space trained yet.
+    # We will retrieve candidates based on difficulty proximity first, then rank with HTOM.
     vector_store = req.app.state.vector_store
-    
-    # Pure embedding search (difficulty filtering removed)
     current_diff = getattr(request.user_state, "currentDifficulty", 5.0)
     
+    # Hack: Search with a random vector to just get a spread of snippets
+    # Ideally, we'd query by difficulty range, but FAISS is fast enough to just get K random-ish ones
+    # or we can use a dummy vector.
+    dummy_vec = np.random.rand(30).astype('float32') # Dimension 30 matches FAISS index
+    
     candidate_snippets = vector_store.search(
-        query_vector=user_embedding,
+        query_vector=dummy_vec,
         k=200,
     )
 
-    # 4. Rank snippets
-    ranked_snippets = rank_snippets(user_embedding, candidate_snippets, current_diff)
+    # 3. Rank snippets using HTOM
+    ranked_snippets = rank_snippets(
+        user_state=request.user_state,
+        user_features_dict=user_features,
+        candidates=candidate_snippets,
+        target_difficulty=current_diff
+    )
     
     if not ranked_snippets:
         raise HTTPException(status_code=404, detail="No suitable snippets found.")
     
-    # 4.5. Filter out recently shown snippets and current snippet to avoid repetition
+    # 4. Filter out recently shown snippets
     recent_ids = getattr(request.user_state, "recentSnippetIds", None) or []
     current_id = request.current_snippet_id
     
-    # Build exclude set from recent IDs + current snippet ID
     exclude_ids = set(str(sid) for sid in recent_ids)
     if current_id:
         exclude_ids.add(str(current_id))
     
     filtered_snippets = [s for s in ranked_snippets if str(s.get("id")) not in exclude_ids]
     
-    # 5. Format top snippet with Exploration (Weighted Random)
+    # 5. Format top snippet with Exploration
     top_snippet = None
     if filtered_snippets:
-        # Exploration: Take top K (e.g., 50) and sample
-        top_k = filtered_snippets[:50]
+        top_k = filtered_snippets[:20] # Narrower top-k since ranking is better now
         
-        # Simple weighted probability: higher rank = higher chance
-        # Weights: [50, 49, 48, ..., 1]
         weights = list(range(len(top_k), 0, -1))
         total_weight = sum(weights)
         probs = [w / total_weight for w in weights]
         
-        # Pick one
-        import numpy as np
         selected_idx = np.random.choice(len(top_k), p=probs)
         s = top_k[selected_idx]
         
         top_snippet = {"id": s.get("id"), "words": s.get("words"), "difficulty": s.get("difficulty")}
 
-    # 6. Compute rolling WPM windows from optional keystroke timestamps
+    # 6. Compute rolling WPM
     timestamps = getattr(request.user_state, "keystroke_timestamps", None)
     if timestamps:
         wpm_windows = compute_rolling_wpm(timestamps)
     else:
-        # fallback to provided rollingWpm (single value) if available
         base_wpm = getattr(request.user_state, "rollingWpm", 0.0)
         wpm_windows = {str(w): round(base_wpm, 2) for w in [15, 30, 45, 60]}
 

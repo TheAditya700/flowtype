@@ -11,6 +11,7 @@ import numpy as np
 # ------------------------------------------------------
 class KeystrokeEvent(BaseModel):
     timestamp: int
+    keyup_timestamp: Optional[int] = None
     key: str
     isBackspace: bool
     isCorrect: bool
@@ -34,14 +35,14 @@ class UserState(BaseModel):
     overallAvgAccuracy: Optional[float] = 0.0
     totalSessions: Optional[int] = 0
 
-    # GRU hidden state (1, H)
-    hiddenState: Optional[List[float]] = None
-
     # Recent keystrokes (last ~50)
     recentKeystrokes: Optional[List[KeystrokeEvent]] = None
     
     # History for filtering
     recentSnippetIds: Optional[List[str]] = None
+    
+    # Timestamps for WPM calculation
+    keystroke_timestamps: Optional[List[float]] = None
 
 
 # ------------------------------------------------------
@@ -78,24 +79,11 @@ class SessionCreateRequest(BaseModel):
 
 
 # ------------------------------------------------------
-# State returned after session → used for next snippet request
-# ------------------------------------------------------
-class UserStateUpdate(BaseModel):
-    hiddenState: List[float]
-    rollingWpm: float
-    rollingAccuracy: float
-    backspaceRate: float
-    hesitationCount: int
-    currentDifficulty: float
-
-
-# ------------------------------------------------------
 # Final API Session Response
 # ------------------------------------------------------
 class SessionResponse(BaseModel):
     session_id: str
     reward: float
-    next_state: UserStateUpdate
 
 
 # ------------------------------------------------------
@@ -117,4 +105,76 @@ class UserStats(BaseModel):
     avg_wpm: float
     avg_accuracy: float
 
+class UserProfile(BaseModel):
+    user_id: str
+    username: Optional[str] = None # Added username
+    features: dict
+    stats: UserStats
 
+# ------------------------------------------------------
+# Authentication Schemas
+# ------------------------------------------------------
+class UserCreate(BaseModel):
+    username: str
+    password: str
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel): # Used for JWT payload validation
+    username: Optional[str] = None
+
+class UserResponse(BaseModel):
+    id: str
+    username: str
+
+    class Config:
+        from_attributes = True
+
+
+# ------------------------------------------------------
+# Analytics Schemas
+# ------------------------------------------------------
+class SnippetBoundary(BaseModel):
+    startTime: int
+    endTime: int
+
+class AnalyticsRequest(BaseModel):
+    keystrokeData: List[KeystrokeEvent]
+    wpm: float
+    accuracy: float
+    snippetBoundaries: Optional[List[SnippetBoundary]] = None
+
+class SpeedPoint(BaseModel):
+    time: float
+    wpm: float
+    rawWpm: float
+    errors: int
+
+class ReplayEvent(BaseModel):
+    char: str
+    iki: float
+    isChunkStart: bool
+    isError: bool
+    snippetIndex: Optional[int] = None
+    isRollover: Optional[bool] = False
+
+class AnalyticsResponse(BaseModel):
+    smoothness: float
+    rollover: float
+    leftFluency: float
+    rightFluency: float
+    crossFluency: float
+    speed: float
+    accuracy: float
+    
+    # Detailed stats for widgets
+    avgIki: float
+    kspc: float
+    errors: int
+    heatmapData: dict[str, dict[str, float]]
+    
+    # Time Series and Replay
+    speedSeries: List[SpeedPoint]
+    replayEvents: List[ReplayEvent]

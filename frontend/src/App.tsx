@@ -2,18 +2,14 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import TypingZone from './components/TypingZone';
 import { fetchNextSnippet, saveSession } from './api/client';
 import { UserState, SnippetLog, KeystrokeEvent, SessionCreateRequest, SnippetResult } from './types';
-import { RotateCcw, Play, User, Palette } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid'; 
 
 import TypingZoneStatsDisplay from './components/TypingZoneStatsDisplay';
-import Heatmap from './components/Heatmap';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { useTheme } from './context/ThemeContext';
+import { useAuth } from './context/AuthContext';
 
-import StatsWidget from './components/StatsWidget'; // <-- ADDED
-import GraphWidget from './components/GraphWidget';
-import BottomControls from './components/BottomControls';
-import Header from './components/Header'; // <-- ADDED
+import Header from './components/Header';
+import ResultsDashboard from './components/dashboard/ResultsDashboard';
 
 interface QueuedSnippet {
   id: string;
@@ -22,18 +18,14 @@ interface QueuedSnippet {
 }
 
 function App() {
-  const { theme, setTheme } = useTheme(); // Theme Context
+  const { theme, setTheme } = useTheme();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
   
   const [snippetQueue, setSnippetQueue] = useState<QueuedSnippet[]>([]);
   const [recentSnippetIds, setRecentSnippetIds] = useState<string[]>([]);
   const [userState, setUserState] = useState<UserState>(() => {
-    let userId = localStorage.getItem('flowtype_user_id');
-    if (!userId) {
-      userId = uuidv4();
-      localStorage.setItem('flowtype_user_id', userId);
-    }
     return {
-      user_id: userId, 
+      user_id: undefined,
       rollingWpm: 0,
       rollingAccuracy: 1,
       backspaceRate: 0,
@@ -44,16 +36,23 @@ function App() {
   });
   const [snippetLogs, setSnippetLogs] = useState<SnippetLog[]>([]);
   const [allKeystrokes, setAllKeystrokes] = useState<KeystrokeEvent[]>([]);
-  const [isPaused, setIsPaused] = useState(false);
-
-  const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
-  const [sessionStats, setSessionStats] = useState({
-    totalWords: 0,
-    totalErrors: 0,
-    totalDuration: 0
-  });
   
-  // Live stats for the current snippet
+  // Pause & Timer State
+  const [isPaused, setIsPaused] = useState(false);
+  const [sessionStartedAt, setSessionStartedAt] = useState<Date | null>(null);
+  const [pauseStartTime, setPauseStartTime] = useState<number | null>(null);
+  const [totalPausedDuration, setTotalPausedDuration] = useState(0);
+  
+  const [sessionSummary, setSessionSummary] = useState({
+    wpm: 0,
+    accuracy: 0,
+    errors: 0,
+    duration: 0, 
+    keystrokeEvents: [] as KeystrokeEvent[],
+    text: "",
+    totalWords: 0
+  });
+
   const [liveStats, setLiveStats] = useState({ wpm: 0, accuracy: 100 });
 
   const handleStatsUpdate = useCallback((stats: { wpm: number; accuracy: number }) => {
@@ -62,13 +61,30 @@ function App() {
 
   const isFetching = useRef(false);
 
+  useEffect(() => {
+    if (!authLoading) {
+      if (isAuthenticated && user?.id) {
+        setUserState(prev => ({ ...prev, user_id: user.id }));
+        localStorage.removeItem('flowtype_anonymous_user_id');
+      } else {
+        let anonymousUserId = localStorage.getItem('flowtype_anonymous_user_id');
+        if (!anonymousUserId) {
+          anonymousUserId = uuidv4();
+          localStorage.setItem('flowtype_anonymous_user_id', anonymousUserId);
+        }
+        setUserState(prev => ({ ...prev, user_id: anonymousUserId }));
+      }
+    }
+  }, [isAuthenticated, user?.id, authLoading]);
+
+
   const fetchMoreSnippets = async (state: UserState, count: number = 1, overrideRecentIds?: string[]) => {
-    if (isFetching.current) return;
+    if (isFetching.current || state.user_id === null) return;
     isFetching.current = true;
     try {
       const fetchedInBatch: string[] = [];
       for (let i = 0; i < count; i++) {
-        const currentRecentIds = overrideRecentIds || recentSnippetIds;
+        const currentRecentIds = (overrideRecentIds || recentSnippetIds).filter(Boolean); // Filter falsy values
         const excludeIds = [...currentRecentIds, ...fetchedInBatch];
         const stateWithRecent = { ...state, recentSnippetIds: excludeIds };
         
@@ -78,7 +94,9 @@ function App() {
           break; 
         }
         setSnippetQueue(prev => [...prev, snippet]);
-        fetchedInBatch.push(snippet.id);
+        if (snippet.id) {
+            fetchedInBatch.push(snippet.id);
+        }
       }
     } catch (error) {
       console.error("Error fetching snippets:", error);
@@ -88,14 +106,16 @@ function App() {
   };
 
   useEffect(() => {
-    fetchMoreSnippets(userState, 2);
-  }, []);
+    if (!authLoading && userState.user_id) {
+        fetchMoreSnippets(userState, 2);
+    }
+  }, [authLoading, userState.user_id]);
 
   useEffect(() => {
-    if (snippetQueue.length <= 1) {
+    if (!authLoading && userState.user_id && snippetQueue.length <= 1) {
       fetchMoreSnippets(userState, 1);
     }
-  }, [snippetQueue.length]);
+  }, [snippetQueue.length, authLoading, userState.user_id]);
 
   const handleSnippetComplete = (stats: { 
     wpm: number; 
@@ -105,8 +125,8 @@ function App() {
     keystrokeEvents: KeystrokeEvent[]; 
     startedAt: Date 
   }) => {
-    if (!sessionStartTime) {
-        setSessionStartTime(stats.startedAt);
+    if (!sessionStartedAt) {
+        setSessionStartedAt(stats.startedAt);
     }
 
     const currentSnippet = snippetQueue[0];
@@ -125,13 +145,34 @@ function App() {
     };
 
     setSnippetLogs(prev => [...prev, log]);
-    setAllKeystrokes(prev => [...prev, ...stats.keystrokeEvents]);
+    const updatedAllKeystrokes = [...allKeystrokes, ...stats.keystrokeEvents];
+    setAllKeystrokes(updatedAllKeystrokes);
     
-    setSessionStats(prev => ({
-        totalWords: prev.totalWords + currentSnippet.words.length,
-        totalErrors: prev.totalErrors + stats.errors,
-        totalDuration: prev.totalDuration + stats.duration
-    }));
+    // Aggregate session stats
+    const now = new Date();
+    const startTime = sessionStartedAt || stats.startedAt;
+    
+    // Correct duration calculation: Total Elapsed - Total Paused Time
+    const totalElapsed = now.getTime() - startTime.getTime();
+    const totalDuration = Math.max(0, (totalElapsed - totalPausedDuration) / 1000);
+    
+    const correctKeystrokes = updatedAllKeystrokes.filter(k => k.isCorrect && !k.isBackspace).length;
+    const currentSessionWpm = totalDuration > 0 ? (correctKeystrokes / 5) / (totalDuration / 60) : 0;
+    const currentSessionAccuracy = updatedAllKeystrokes.length > 0 ? (updatedAllKeystrokes.filter(k => k.isCorrect).length / updatedAllKeystrokes.length) : 0;
+
+    const snippetText = currentSnippet.words.join(' ');
+    const newText = sessionSummary.text ? sessionSummary.text + " " + snippetText : snippetText;
+    const newTotalWords = sessionSummary.totalWords + currentSnippet.words.length;
+
+    setSessionSummary({
+      wpm: currentSessionWpm,
+      accuracy: currentSessionAccuracy,
+      errors: sessionSummary.errors + stats.errors,
+      duration: totalDuration,
+      keystrokeEvents: updatedAllKeystrokes,
+      text: newText,
+      totalWords: newTotalWords
+    });
 
     // Update User State
     const newUserState = {
@@ -142,12 +183,13 @@ function App() {
     };
     setUserState(newUserState);
     
-    const updatedRecentIds = [...recentSnippetIds, currentSnippet.id].slice(-20);
+    const updatedRecentIds = [...recentSnippetIds, currentSnippet.id].filter(Boolean).slice(-20); // Filter falsy values
     setRecentSnippetIds(updatedRecentIds);
 
     setSnippetQueue(prev => prev.slice(1));
     fetchMoreSnippets(newUserState, 1, updatedRecentIds);
 
+    // Save Session to Backend
     const snippetResult: SnippetResult = {
         snippet_id: currentSnippet.id,
         wpm: stats.wpm,
@@ -159,14 +201,14 @@ function App() {
 
     const sessionPayload: SessionCreateRequest = {
         user_id: userState.user_id,
-        durationSeconds: stats.duration,
-        wordsTyped: currentSnippet.words.length,
-        keystrokeData: stats.keystrokeEvents,
-        wpm: stats.wpm,
-        accuracy: stats.accuracy,
-        errors: stats.errors,
+        durationSeconds: totalDuration,
+        wordsTyped: newTotalWords,
+        keystrokeData: updatedAllKeystrokes,
+        wpm: currentSessionWpm,
+        accuracy: currentSessionAccuracy,
+        errors: sessionSummary.errors + stats.errors,
         difficultyLevel: safeDifficulty,
-        snippets: [snippetResult],
+        snippets: [snippetResult], // This is simplistic, implies 1 snippet per "session" save?
         user_state: userState, 
         flowScore: 0.0 
     };
@@ -177,33 +219,59 @@ function App() {
   const resetSession = () => {
     setSnippetLogs([]);
     setAllKeystrokes([]);
-    setSessionStats({ totalWords: 0, totalErrors: 0, totalDuration: 0 });
-    setSessionStartTime(null);
+    setSessionStartedAt(null);
+    
+    // Reset Pause State
     setIsPaused(false);
-    setUserState({
+    setPauseStartTime(null);
+    setTotalPausedDuration(0);
+    
+    setSessionSummary({
+      wpm: 0, accuracy: 0, errors: 0, duration: 0, keystrokeEvents: [], text: "", totalWords: 0
+    });
+    setUserState(prev => ({
+      ...prev,
       rollingWpm: 0,
       rollingAccuracy: 1,
       backspaceRate: 0,
       hesitationCount: 0,
       recentErrors: [],
       currentDifficulty: 5,
-    });
+    }));
   };
 
-  // Calculation for Graphs/Stats (Memoized or inline)
-  const chartData = snippetLogs.map((log, idx) => ({
-    name: idx + 1,
-    wpm: log.wpm,
-    accuracy: (log.accuracy * 100).toFixed(1),
-  }));
+  const handlePause = () => {
+      setIsPaused(true);
+      setPauseStartTime(Date.now());
+  };
 
-  const avgWpm = snippetLogs.length > 0 
-    ? (snippetLogs.reduce((acc, l) => acc + l.wpm, 0) / snippetLogs.length).toFixed(0) 
-    : 0;
-  const avgAcc = snippetLogs.length > 0 
-    ? (snippetLogs.reduce((acc, l) => acc + l.accuracy, 0) / snippetLogs.length * 100).toFixed(1) 
-    : 100;
+  // This now serves as the "Continue" action
+  const handleContinue = () => {
+    // 1. Reset Session Data (Clear history, logs, timers)
+    resetSession();
+    
+    // 2. Shift Queue to discard the current unfinished snippet (if any)
+    // If we paused after completion, handleSnippetComplete already shifted.
+    // If we paused mid-snippet, we want to skip it.
+    // Since we don't know if we are mid-snippet easily here without checking snippetLogs vs queue...
+    // Actually, if we paused mid-snippet, snippetLogs is NOT updated with it.
+    // So we should force a shift to ensure "Fresh" snippet.
+    setSnippetQueue(prev => prev.slice(1));
+    
+    // 3. Ensure we have enough snippets
+    fetchMoreSnippets(userState, 2);
+    
+    // 4. Unpause (happens in resetSession too but ensuring logic)
+    setIsPaused(false);
+  };
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-bg text-text flex items-center justify-center">
+        <div className="text-xl font-mono animate-pulse">Loading FlowType...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-bg text-text flex flex-col p-8 relative font-mono transition-colors duration-300 overflow-hidden">
@@ -211,73 +279,53 @@ function App() {
       {/* Header Component (Top Right Controls) */}
       <Header isPaused={isPaused} />
 
-      {/* Main Grid Layout */}
-      <div className="flex-grow grid grid-cols-[1fr_minmax(auto,1200px)_1fr] gap-8 items-center w-full max-w-[1800px] mx-auto relative">
-         
-         {/* Left Column: Stats Widget */}
-         <div className={`transition-all duration-500 ${isPaused ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-20 pointer-events-none'}`}>
-            <StatsWidget 
-                wpm={avgWpm} 
-                accuracy={avgAcc} 
-                totalWords={sessionStats.totalWords} 
+      {/* Main Content Area */}
+      <div className="flex-grow flex items-center justify-center w-full max-w-[1800px] mx-auto relative">
+         {isPaused ? (
+            <ResultsDashboard 
+              keystrokeEvents={sessionSummary.keystrokeEvents} 
+              wpm={sessionSummary.wpm}
+              accuracy={sessionSummary.accuracy}
+              duration={sessionSummary.duration}
+              snippetText={sessionSummary.text}
+              snippetLogs={snippetLogs}
+              onContinue={handleContinue}
             />
-         </div>
+         ) : (
+            <div className="flex flex-col items-center w-full">
+                {/* Dynamic Header Area (Above Snippet) */}
+                <div className="w-full mb-8 h-16 relative">
+                    <div className="absolute bottom-0 left-0 w-full flex justify-between items-end transition-all duration-500 opacity-100 translate-y-0">
+                        <h1 className="text-3xl font-bold text-subtle tracking-tighter">nerdtype</h1>
+                        {snippetQueue.length > 0 && (
+                            <TypingZoneStatsDisplay wpm={liveStats.wpm} accuracy={liveStats.accuracy} />
+                        )}
+                    </div>
+                </div>
 
-         {/* Center Column: Logo, Stats, Typing Zone */}
-         <div className="flex flex-col items-center w-full">
-            
-            {/* Dynamic Header Area (Above Snippet) */}
-            <div className="w-full mb-8 h-16 relative">
-                {/* State 1: Typing (Small Logo + Live Stats) */}
-                <div className={`absolute bottom-0 left-0 w-full flex justify-between items-end transition-all duration-500 ${isPaused ? 'opacity-0 translate-y-4 pointer-events-none' : 'opacity-100 translate-y-0'}`}>
-                    <h1 className="text-3xl font-bold text-subtle tracking-tighter">nerdtype</h1>
-                    {snippetQueue.length > 0 && (
-                        <TypingZoneStatsDisplay wpm={liveStats.wpm} accuracy={liveStats.accuracy} />
+                {/* Typing Zone */}
+                <div className="w-full transition-all duration-500 scale-100">
+                    {snippetQueue.length > 0 ? (
+                        <TypingZone 
+                        snippets={snippetQueue} 
+                        onSnippetComplete={handleSnippetComplete}
+                        onRequestPause={handlePause}
+                        onStatsUpdate={handleStatsUpdate}
+                        />
+                    ) : (
+                        <div className="text-center text-subtle animate-pulse">loading...</div>
                     )}
                 </div>
-
-                {/* State 2: Paused (Big Logo Centered) */}
-                <div className={`absolute bottom-0 left-0 w-full flex justify-center items-end transition-all duration-500 ${isPaused ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`}>
-                    <h1 className="text-6xl font-bold text-primary tracking-tighter">nerdtype</h1>
-                </div>
             </div>
-
-            {/* Typing Zone */}
-            <div className={`w-full transition-all duration-500 ${isPaused ? 'blur-[2px] opacity-50 scale-95' : 'scale-100'}`}>
-                {snippetQueue.length > 0 ? (
-                    <TypingZone 
-                    snippets={snippetQueue} 
-                    onSnippetComplete={handleSnippetComplete}
-                    onRequestPause={() => setIsPaused(true)}
-                    onStatsUpdate={handleStatsUpdate}
-                    />
-                ) : (
-                    <div className="text-center text-subtle animate-pulse">loading...</div>
-                )}
-            </div>
-         </div>
-
-         {/* Right Column: Graph Widget */}
-         <div className={`transition-all duration-500 ${isPaused ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-20 pointer-events-none'}`}>
-            <GraphWidget data={chartData} />
-         </div>
-
-      </div>
-
-      {/* Bottom: Controls */}
-      <div className={`absolute bottom-8 left-0 right-0 transition-all duration-500 ${isPaused ? 'translate-y-0 opacity-100' : 'translate-y-20 opacity-0 pointer-events-none'}`}>
-         <BottomControls 
-            keystrokes={allKeystrokes} 
-            onReset={resetSession} 
-            onResume={() => setIsPaused(false)} 
-         />
+         )}
       </div>
 
       {/* Footer Hint (Only when typing) */}
-      <div className={`absolute bottom-8 left-0 right-0 text-center text-subtle text-sm transition-opacity duration-300 ${isPaused ? 'opacity-0' : 'opacity-100'}`}>
-            <span className="bg-container px-2 py-1 rounded text-xs mr-2 text-text">enter</span> to pause
-      </div>
-
+      {!isPaused && (
+        <div className="absolute bottom-8 left-0 right-0 text-center text-subtle text-sm transition-opacity duration-300 opacity-100">
+              <span className="bg-container px-2 py-1 rounded text-xs mr-2 text-text">enter</span> to pause
+        </div>
+      )}
     </div>
   );
 }

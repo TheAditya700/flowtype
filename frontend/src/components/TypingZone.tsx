@@ -46,6 +46,23 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
   const currentSnippet = snippets[0];
   const words = currentSnippet?.words || [];
 
+  // Session Hooks
+  const {
+    sessionStartTime,
+    sessionDuration,
+    keystrokeEvents,
+    startSession,
+    endSession,
+    pauseSession, // New
+    addKeystrokeEvent,
+    updateKeystrokeEvent
+  } = useTypingSession();
+
+  const { wpm, accuracy } = useWPMCalculation(keystrokeEvents, sessionDuration);
+  
+  // Key Tracking for Rollover
+  const pendingKeys = useRef<Record<string, string>>({});
+
   // If there's no snippet, don't execute any further logic or render
   if (!currentSnippet) return null;
 
@@ -111,18 +128,6 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
     return () => clearTimeout(timeoutId);
   }, [wordIndex, charIndex, currentTyped, currentSnippet]); 
 
-  // Session Hooks
-  const {
-    sessionStartTime,
-    sessionDuration,
-    keystrokeEvents,
-    startSession,
-    endSession,
-    addKeystrokeEvent,
-  } = useTypingSession();
-
-  const { wpm, accuracy } = useWPMCalculation(keystrokeEvents, sessionDuration);
-
   // Call onStatsUpdate whenever wpm or accuracy changes
   useEffect(() => {
     if (onStatsUpdate) {
@@ -140,11 +145,20 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
     inputRef.current?.focus();
   }, [snippets]);
 
+  const handleKeyUp = (e: React.KeyboardEvent<HTMLInputElement>) => {
+      const id = pendingKeys.current[e.code];
+      if (id) {
+          updateKeystrokeEvent(id, { keyup_timestamp: Date.now() });
+          delete pendingKeys.current[e.code];
+      }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     // Pause
     if (e.key === 'Enter') {
       e.preventDefault();
-      onRequestPause();
+      pauseSession(); // Pause tracking
+      onRequestPause(); // Notify parent to switch view
       return;
     }
 
@@ -153,6 +167,10 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
       startSession();
       setSessionStarted(true);
     }
+    
+    // Generate Event ID
+    const eventId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    pendingKeys.current[e.code] = eventId;
 
     const currentTargetWord = words[wordIndex] || '';
 
@@ -161,7 +179,7 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
       if (currentTyped.length > 0) {
         // Simple backspace within current word
         setCurrentTyped(prev => prev.slice(0, -1));
-        addKeystrokeEvent({ timestamp: Date.now(), key: 'Backspace', isBackspace: true, isCorrect: false });
+        addKeystrokeEvent({ id: eventId, timestamp: Date.now(), key: 'Backspace', isBackspace: true, isCorrect: false });
       } else if (typedHistory.length > 0) {
         // Backspace to previous word
         const prevWordTyped = typedHistory[typedHistory.length - 1];
@@ -188,7 +206,7 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
       setTypedHistory(newHistory);
       setCurrentTyped('');
       
-      addKeystrokeEvent({ timestamp: Date.now(), key: ' ', isBackspace: false, isCorrect: isCorrectWord });
+      addKeystrokeEvent({ id: eventId, timestamp: Date.now(), key: ' ', isBackspace: false, isCorrect: isCorrectWord });
 
       // Check Completion
       if (newHistory.length === words.length) {
@@ -226,12 +244,14 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
       setCurrentTyped(newTyped);
       
       const isCorrect = e.key === expectedChar;
-      addKeystrokeEvent({ timestamp: Date.now(), key: e.key, isBackspace: false, isCorrect });
+      addKeystrokeEvent({ id: eventId, timestamp: Date.now(), key: e.key, isBackspace: false, isCorrect });
     }
   };
 
   // Render Helper
   const renderSnippet = (snippetWords: string[], isCurrentSnippet: boolean) => {
+    if (!snippetWords) return null; // Guard against undefined snippetWords
+
     return (
       <div className={`flex flex-wrap content-start select-none mb-4 ${isCurrentSnippet ? '' : 'opacity-40 grayscale blur-[1px]'}`}>
         {snippetWords.map((targetWord, wIdx) => {
@@ -328,6 +348,7 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
         className="absolute opacity-0 top-0 left-0 h-0 w-0"
         autoFocus
         onKeyDown={handleKeyDown}
+        onKeyUp={handleKeyUp}
         value="" 
         onChange={() => {}}
       />
@@ -347,7 +368,7 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
       {renderSnippet(words, true)}
 
       {/* Next Snippet Preview */}
-      {snippets[1] && renderSnippet(snippets[1].words, false)}
+      {snippets[1] && snippets[1].words && renderSnippet(snippets[1].words, false)}
     </div>
   );
 };

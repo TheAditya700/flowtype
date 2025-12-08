@@ -48,4 +48,4 @@ Thumbs.db
 # Deployment
 .railway/
 
-.db
+*.db

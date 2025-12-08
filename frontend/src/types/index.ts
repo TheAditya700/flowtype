@@ -4,8 +4,15 @@ export interface SnippetResponse {
   difficulty: number;
 }
 
+export interface SnippetRetrieveResponse {
+  snippet: SnippetResponse;
+  wpm_windows: Record<string, number>;
+}
+
 export interface KeystrokeEvent {
+  id?: string;
   timestamp: number;
+  keyup_timestamp?: number;
   key: string;
   isBackspace: boolean;
   isCorrect: boolean;
@@ -60,4 +67,55 @@ export interface SnippetLog {
   wpm: number;
   accuracy: number;
   difficulty: number;
+}
+
+export interface UserStats {
+  total_sessions: number;
+  avg_wpm: number;
+  avg_accuracy: number;
+}
+
+export interface UserProfile {
+  user_id: string;
+  username?: string;
+  features: Record<string, any>;
+  stats: UserStats;
+}
+
+export interface AnalyticsRequest {
+  keystrokeData: KeystrokeEvent[];
+  wpm: number;
+  accuracy: number;
+}
+
+export interface SpeedPoint {
+  time: number;
+  wpm: number;
+  rawWpm: number;
+  errors: number;
+}
+
+export interface ReplayEvent {
+  char: string;
+  iki: number;
+  isChunkStart: boolean;
+  isError: boolean;
+  snippetIndex?: number;
+  isRollover?: boolean;
+}
+
+export interface AnalyticsResponse {
+  smoothness: number;
+  rollover: number;
+  leftFluency: number;
+  rightFluency: number;
+  crossFluency: number;
+  speed: number;
+  accuracy: number;
+  avgIki: number;
+  kspc: number;
+  errors: number;
+  heatmapData: Record<string, { accuracy: number; speed: number }>;
+  speedSeries: SpeedPoint[];
+  replayEvents: ReplayEvent[];
 }

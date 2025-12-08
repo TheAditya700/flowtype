@@ -34,6 +34,8 @@ class GUID(TypeDecorator):
 class User(Base):
     __tablename__ = "users"
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    username = Column(String, unique=True, index=True, nullable=True) # Making nullable for now to support anonymous if needed, will make not null later after user migration
+    hashed_password = Column(String, nullable=True) # Making nullable for now
     created_at = Column(DateTime, default=func.now())
     last_active = Column(DateTime, default=func.now(), onupdate=func.now())
 
