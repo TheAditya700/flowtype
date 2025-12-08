@@ -21,11 +21,11 @@ interface FlowRadarProps {
 
 const FlowRadar: React.FC<FlowRadarProps> = ({ metrics }) => {
   const data = [
+    { subject: 'Cross', A: metrics.crossFluency, fullMark: 100 },
+    { subject: 'R-Hand', A: metrics.rightFluency, fullMark: 100 },
     { subject: 'Smoothness', A: metrics.smoothness, fullMark: 100 },
     { subject: 'Rollover', A: metrics.rollover, fullMark: 100 },
     { subject: 'L-Hand', A: metrics.leftFluency, fullMark: 100 },
-    { subject: 'Cross', A: metrics.crossFluency, fullMark: 100 },
-    { subject: 'R-Hand', A: metrics.rightFluency, fullMark: 100 },
   ];
 
   return (
