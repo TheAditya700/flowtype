@@ -18,11 +18,7 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 2. Install PyTorch (CPU only) to save massive space
-# We install this BEFORE requirements-ml.txt so sentence-transformers sees it
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
-
-# 3. Install ML Dependencies (Inference)
+# 2. Install ML Dependencies (Inference)
 COPY requirements-ml.txt .
 RUN pip install --no-cache-dir -r requirements-ml.txt
 

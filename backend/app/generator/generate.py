@@ -19,7 +19,7 @@ from .config import (
     SNIPPETS_PATH,
 )
 
-from app.ml.difficulty_features import (
+from app.ml.snippet_features import (
     compute_difficulty_features,
     set_global_ngram_tables,
     set_global_wordfreq,

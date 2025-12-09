@@ -1,15 +1,12 @@
 # ---------------------------------------------------
-# Training / Offline Dockerfile (GPU Enabled)
+# Training / Offline Dockerfile (CPU Optimization)
 # ---------------------------------------------------
-FROM nvidia/cuda:12.2.1-cudnn8-runtime-ubuntu22.04
+FROM python:3.11-slim
 
 WORKDIR /app
 
 # Install Python and system dependencies
 RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-pip \
-    python3-venv \
     gcc \
     g++ \
     git \
@@ -17,19 +14,15 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Upgrade pip
-RUN python3 -m pip install --upgrade pip setuptools wheel
+RUN pip install --upgrade pip setuptools wheel
 
 # 1. Install Base Dependencies
 COPY requirements.txt .
-RUN python3 -m pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-# 2. Install PyTorch (GPU)
-# Standard pip install torch pulls the CUDA-bundled wheel
-RUN python3 -m pip install --no-cache-dir torch
-
-# 3. Install ML Dependencies
+# 2. Install ML Dependencies
 COPY requirements-ml.txt .
-RUN python3 -m pip install --no-cache-dir -r requirements-ml.txt
+RUN pip install --no-cache-dir -r requirements-ml.txt
 
 # Copy application
 COPY . .

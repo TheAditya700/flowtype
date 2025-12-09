@@ -2,7 +2,7 @@
 # schema.py  (rewritten for GRU + RL + Two-Tower ranker)
 # ------------------------------------------------------
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Dict
 import numpy as np
 
 
@@ -79,11 +79,67 @@ class SessionCreateRequest(BaseModel):
 
 
 # ------------------------------------------------------
+# Analytics Schemas (Dependencies for SessionResponse)
+# ------------------------------------------------------
+class SnippetBoundary(BaseModel):
+    startTime: int
+    endTime: int
+
+class AnalyticsRequest(BaseModel):
+    keystrokeData: List[KeystrokeEvent]
+    wpm: float
+    accuracy: float
+    snippetBoundaries: Optional[List[SnippetBoundary]] = None
+
+class SpeedPoint(BaseModel):
+    time: float
+    wpm: float
+    rawWpm: float
+    errors: int
+
+class ReplayEvent(BaseModel):
+    char: str
+    iki: float
+    isChunkStart: bool
+    isError: bool
+    snippetIndex: Optional[int] = None
+    isRollover: Optional[bool] = False
+
+class AnalyticsResponse(BaseModel):
+    smoothness: float
+    rollover: float
+    leftFluency: float
+    rightFluency: float
+    crossFluency: float
+    speed: float
+    accuracy: float
+    
+    # Detailed stats for widgets
+    avgIki: float
+    kspc: float
+    errors: int
+    heatmapData: Dict[str, Dict[str, float]]
+    avgChunkLength: float
+    
+    # Time Series and Replay
+    speedSeries: List[SpeedPoint]
+    replayEvents: List[ReplayEvent]
+
+
+# ------------------------------------------------------
 # Final API Session Response
 # ------------------------------------------------------
 class SessionResponse(BaseModel):
     session_id: str
     reward: float
+    
+    # Include original session summary stats for frontend
+    durationSeconds: float
+    wpm: float
+    accuracy: float
+    errors: int
+    
+    analytics: AnalyticsResponse
 
 
 # ------------------------------------------------------
@@ -136,51 +192,3 @@ class UserResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
-
-# ------------------------------------------------------
-# Analytics Schemas
-# ------------------------------------------------------
-class SnippetBoundary(BaseModel):
-    startTime: int
-    endTime: int
-
-class AnalyticsRequest(BaseModel):
-    keystrokeData: List[KeystrokeEvent]
-    wpm: float
-    accuracy: float
-    snippetBoundaries: Optional[List[SnippetBoundary]] = None
-
-class SpeedPoint(BaseModel):
-    time: float
-    wpm: float
-    rawWpm: float
-    errors: int
-
-class ReplayEvent(BaseModel):
-    char: str
-    iki: float
-    isChunkStart: bool
-    isError: bool
-    snippetIndex: Optional[int] = None
-    isRollover: Optional[bool] = False
-
-class AnalyticsResponse(BaseModel):
-    smoothness: float
-    rollover: float
-    leftFluency: float
-    rightFluency: float
-    crossFluency: float
-    speed: float
-    accuracy: float
-    
-    # Detailed stats for widgets
-    avgIki: float
-    kspc: float
-    errors: int
-    heatmapData: dict[str, dict[str, float]]
-    avgChunkLength: float
-    
-    # Time Series and Replay
-    speedSeries: List[SpeedPoint]
-    replayEvents: List[ReplayEvent]

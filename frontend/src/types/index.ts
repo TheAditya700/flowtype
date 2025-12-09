@@ -125,3 +125,14 @@ export interface AnalyticsResponse {
   replayEvents: ReplayEvent[];
   avgChunkLength: number;
 }
+
+// Added SessionResponse interface
+export interface SessionResponse {
+  session_id: string;
+  reward: number;
+  durationSeconds: number;
+  wpm: number;
+  accuracy: number;
+  errors: number;
+  analytics: AnalyticsResponse;
+}

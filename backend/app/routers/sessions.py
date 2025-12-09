@@ -1,14 +1,21 @@
-# ----------------------------
-# sessions.py  (rewritten)
-# ----------------------------
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import SessionLocal
-from app.models.schema import SessionCreateRequest, SessionResponse
-from app.models.db_models import TypingSession, SnippetUsage, KeystrokeEventDB, User
+from app.models.schema import (
+    SessionCreateRequest,
+    SessionResponse,
+    AnalyticsResponse,
+    SpeedPoint,
+    ReplayEvent,
+    SnippetBoundary
+)
+from app.models.db_models import TypingSession, SnippetUsage, KeystrokeEventDB, User, Snippet
 from app.ml.user_features import UserFeatureExtractor
+from app.ml.feature_aggregator import update_long_term_features
+from app.ml.lints_agent import agent
 from sqlalchemy.sql import func
-import logging, uuid
+import logging, uuid, json
+import numpy as np
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -29,17 +36,176 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
       - Saves the final session row
       - Saves snippet usage rows
       - Saves keystrokes
-      - Updates User long-term stats (via UserFeatureExtractor)
-      - Computes reward
+      - Updates User long-term stats (via UserFeatureExtractor & Agent EMA)
+      - Computes reward and Updates LinTS Agent
+      - Updates Best WPMs
+      - Returns detailed analytics
     """
     try:
         # -----------------------------------------------------
-        # Compute basic reward (RL training)
+        # 1. Setup User & Extractor
         # -----------------------------------------------------
-        reward = (request.wpm * request.accuracy) - (0.5 * request.errors)
+        user = None
+        user_ema_vector = []
+        
+        if request.user_id:
+            user = db.query(User).filter(User.id == request.user_id).first()
+            if not user:
+                user = User(id=request.user_id)
+                db.add(user)
+                db.flush()
+
+        # Load features (JSON)
+        # Structure: { "raw": {...}, "ema": {...} } or legacy just {...}
+        features_json = user.features if user and user.features else {}
+        
+        # Backward compatibility check
+        if "raw" in features_json:
+            raw_state = features_json.get("raw", {})
+            ema_state = features_json.get("ema", {})
+        else:
+            raw_state = features_json # Assume legacy is just raw
+            ema_state = {}
+
+        # Load extractor from raw state
+        extractor = UserFeatureExtractor.from_dict(raw_state)
+        
+        # Prepare session dict for extractor
+        events_dicts = [
+            {
+                "key": k.key,
+                "isBackspace": k.isBackspace,
+                "isCorrect": k.isCorrect,
+                "timestamp": k.timestamp,
+                "keyup_timestamp": k.keyup_timestamp
+            } 
+            for k in request.keystrokeData
+        ]
+        
+        session_data = {
+            'keystroke_events': events_dicts,
+            'wpm': request.wpm,
+            'accuracy': request.accuracy,
+            'snippet_difficulty': request.difficultyLevel,
+            'completed': True,
+            'quit_progress': 1.0
+        }
+        
+        # --- Pre-update Context for Agent ---
+        # We need the EMA vector *before* this session updates it (conceptually),
+        # or *current* belief about user.
+        if ema_state and 'ema_mean' in ema_state:
+            pre_session_features = ema_state['ema_mean']
+        else:
+            # Fallback: compute from extractor history if available, or zeros
+            pre_session_features = extractor.compute_user_features().tolist()
+            
+        # Update Extractor with *current* session (accumulates counts)
+        extractor.update_from_session(session_data)
+        
+        # Calculate new short-term feature vector for this session
+        session_features_vector = extractor.compute_user_features().tolist()
+        
+        # Update EMA State using feature_aggregator
+        new_ema_state = update_long_term_features(ema_state, session_features_vector)
+        
+        # Update User in DB
+        if user:
+            user.features = {
+                "raw": extractor.to_dict(),
+                "ema": new_ema_state
+            }
+            user.last_active = func.now()
+            
+            # --- Update Best WPMs ---
+            current_wpm = request.wpm
+            duration = request.durationSeconds
+            
+            # Helper to update best if current is better within tolerance window
+            # Tolerance: +/- 10% or absolute time window?
+            # User request: "best wpms for 15 30 60 and 120"
+            # We usually map actual duration to closest bucket.
+            
+            best_wpms = dict(user.best_wpms) if user.best_wpms else {"15": 0.0, "30": 0.0, "60": 0.0, "120": 0.0}
+            
+            # Define buckets
+            buckets = [15, 30, 60, 120]
+            
+            # Find closest bucket
+            closest_bucket = min(buckets, key=lambda x: abs(x - duration))
+            
+            # Check if duration is reasonably close (e.g. within 20% or +/- 5s)
+            # If user types for 16s, it counts for 15s bucket.
+            # If 45s, counts for 30s or 60s? Maybe 60?
+            if abs(closest_bucket - duration) / closest_bucket < 0.25: # 25% tolerance
+                bucket_key = str(closest_bucket)
+                if current_wpm > best_wpms.get(bucket_key, 0.0):
+                    best_wpms[bucket_key] = current_wpm
+                    user.best_wpms = best_wpms
+            
+            db.add(user)
 
         # -----------------------------------------------------
-        # Insert TypingSession row
+        # 2. LinTS Agent Update
+        # -----------------------------------------------------
+        total_session_reward = 0.0
+        
+        snippet_ids = [s.snippet_id for s in request.snippets]
+        db_snippets = db.query(Snippet).filter(Snippet.id.in_(snippet_ids)).all()
+        snippet_map = {str(s.id): s for s in db_snippets}
+        
+        # Calculate global smoothness proxies for reward calculation
+        def safe_div(n, d, default=0.0):
+            return n / d if d > 0 else default
+            
+        def get_iki_cv(key):
+            s = extractor.iki_stats[key]
+            if s['count'] == 0: return 0.0
+            mean = s['sum'] / s['count']
+            var = (s['sum_sq'] / s['count']) - (mean ** 2)
+            std = np.sqrt(max(0, var))
+            return safe_div(std, mean)
+            
+        global_iki_cv = get_iki_cv('global')
+        total_intervals = extractor.spike_count + extractor.flow_intervals
+        global_spike_rate = safe_div(extractor.spike_count, total_intervals)
+        
+        for s_res in request.snippets:
+            s_db = snippet_map.get(s_res.snippet_id)
+            if s_db and s_db.embedding:
+                metrics_now = {
+                    'accuracy': s_res.accuracy,
+                    'wpm': s_res.wpm,
+                    'iki_cv': global_iki_cv,
+                    'spike_rate': global_spike_rate
+                }
+                
+                # Reward: compare current metrics against PRE-SESSION EMA baseline
+                r = agent.calculate_reward(metrics_now, pre_session_features)
+                total_session_reward += r
+                
+                # Agent Update
+                # Context: EMA, STD, PrevSnippet
+                # We need STD from the EMA state if available
+                user_std = []
+                if 'ema_var' in new_ema_state: # Use new variance or old? Usually old context.
+                    # Using old var from ema_state (before update) if possible, but we updated it.
+                    # Let's use new_ema_state var as proxy for "variance of user performance"
+                    # Actually feature_aggregator returns 'ema_var'.
+                    user_std = np.sqrt(np.maximum(new_ema_state['ema_var'], 0)).tolist()
+                
+                user_context = agent.get_context(
+                    user_ema=pre_session_features,
+                    user_std=user_std,
+                    prev_snippet_embedding=None 
+                )
+                
+                agent.update(user_context, s_db.embedding, r)
+        
+        agent.save()
+
+        # -----------------------------------------------------
+        # 3. Save Session to DB
         # -----------------------------------------------------
         db_session = TypingSession(
             user_id=request.user_id,
@@ -53,14 +219,12 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
             starting_difficulty=request.difficultyLevel,
             ending_difficulty=request.difficultyLevel,
             flow_score=request.flowScore,
-            reward=reward,
+            reward=total_session_reward,
         )
         db.add(db_session)
         db.flush()
 
-        # -----------------------------------------------------
-        # Save Keystrokes (for GRU training)
-        # -----------------------------------------------------
+        # Save Keystrokes
         kevent_objs = [
             KeystrokeEventDB(
                 session_id=db_session.id,
@@ -73,9 +237,7 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
         ]
         db.add_all(kevent_objs)
 
-        # -----------------------------------------------------
-        # Save SnippetUsage rows
-        # -----------------------------------------------------
+        # Save SnippetUsage
         usage_objs = []
         for idx, s in enumerate(request.snippets):
             usage_objs.append(
@@ -91,63 +253,181 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
             )
         db.add_all(usage_objs)
 
-        # -----------------------------------------------------
-        # Update User Long-Term Stats (UserFeatureExtractor)
-        # -----------------------------------------------------
-        if request.user_id:
-            user = db.query(User).filter(User.id == request.user_id).first()
-            
-            # Create user if not exists (lazy creation for no-auth flow)
-            if not user:
-                user = User(id=request.user_id)
-                db.add(user)
-                # Flush to ensure ID is available if needed, though we set it manually
-                db.flush() 
-
-            # Load extractor from JSON (or init new)
-            extractor = UserFeatureExtractor.from_dict(user.features or {})
-            
-            # Prepare session dict for extractor
-            # UserFeatureExtractor expects dict-based events with keys matching KeystrokeEvent schema
-            events_dicts = [
-                {
-                    "key": k.key,
-                    "isBackspace": k.isBackspace,
-                    "isCorrect": k.isCorrect,
-                    "timestamp": k.timestamp,
-                    "keyup_timestamp": k.keyup_timestamp
-                } 
-                for k in request.keystrokeData
-            ]
-            
-            session_data = {
-                'keystroke_events': events_dicts,
-                'wpm': request.wpm,
-                'accuracy': request.accuracy,
-                'snippet_difficulty': request.difficultyLevel,
-                'completed': True,  # Submitting a session implies completion/submission
-                'quit_progress': 1.0
-            }
-            
-            # Update and Save
-            extractor.update_from_session(session_data)
-            user.features = extractor.to_dict()
-            
-            # Update last active
-            user.last_active = func.now()
-            db.add(user)
-
         db.commit()
         db.refresh(db_session)
 
-        response = SessionResponse(
-            session_id=str(db_session.id),
-            reward=reward
+        # -----------------------------------------------------
+        # 4. Generate Detailed Analytics (Response)
+        # -----------------------------------------------------
+        
+        # Helpers for Analytics
+        def cv_to_score(cv):
+            return max(0.0, min(100.0, (1.0 - cv) * 100))
+            
+        cv_global = get_iki_cv('global')
+        cv_L2L = get_iki_cv('L2L')
+        cv_R2R = get_iki_cv('R2R')
+        cv_cross = get_iki_cv('cross')
+        
+        # Rollover Rate
+        total_transitions = extractor.iki_stats['global']['count']
+        rollover_rate = safe_div(extractor.rollover_count, total_transitions)
+        
+        # Avg IKI
+        avgIki = safe_div(extractor.iki_stats['global']['sum'], extractor.iki_stats['global']['count'])
+        
+        # KSPC
+        correct_presses = extractor.total_presses - extractor.backspace_count - extractor.total_errors
+        kspc = safe_div(extractor.total_presses, correct_presses, default=1.0)
+        
+        # Heatmap Data & Speed Series
+        char_iki_stats = {} 
+        sorted_events = sorted(events_dicts, key=lambda x: x['timestamp'])
+        
+        # Speed Series
+        speed_series = []
+        if sorted_events:
+            bucket_size = 1000 # 1 second
+            start_time = sorted_events[0]['timestamp']
+            duration_ms = sorted_events[-1]['timestamp'] - start_time
+            max_time = int(np.ceil(duration_ms / bucket_size) * bucket_size)
+            
+            buckets = {t: {'chars': 0, 'errors': 0} for t in range(0, max_time + bucket_size, bucket_size)}
+            
+            for e in sorted_events:
+                rel_time = e['timestamp'] - start_time
+                bucket_time = (rel_time // bucket_size) * bucket_size
+                if bucket_time in buckets:
+                    if not e['isBackspace']:
+                        buckets[bucket_time]['chars'] += 1
+                    if not e['isCorrect']:
+                        buckets[bucket_time]['errors'] += 1
+            
+            raw_points = []
+            sorted_times = sorted(buckets.keys())
+            for t in sorted_times:
+                b = buckets[t]
+                raw_wpm = (b['chars'] / 5.0) * 60.0
+                raw_points.append({
+                    'time': t / 1000.0,
+                    'rawWpm': raw_wpm,
+                    'errors': b['errors']
+                })
+                
+            # Smoothing
+            for i in range(len(raw_points)):
+                start = max(0, i - 2)
+                window = raw_points[start : i+1]
+                avg_wpm = sum(p['rawWpm'] for p in window) / len(window)
+                speed_series.append(SpeedPoint(
+                    time=raw_points[i]['time'],
+                    wpm=round(avg_wpm),
+                    rawWpm=raw_points[i]['rawWpm'],
+                    errors=raw_points[i]['errors']
+                ))
+
+        # Replay Events
+        replay_events = []
+        valid_events = [e for e in sorted_events if not e['isBackspace'] and e['isCorrect'] and len(e['key']) == 1]
+        
+        if valid_events:
+            ikis = []
+            rollovers = []
+            for i in range(len(valid_events)):
+                if i == 0:
+                    ikis.append(0)
+                    rollovers.append(False)
+                else:
+                    ikis.append(valid_events[i]['timestamp'] - valid_events[i-1]['timestamp'])
+                    prev_keyup = valid_events[i-1].get('keyup_timestamp')
+                    curr_down = valid_events[i]['timestamp']
+                    is_rollover = (prev_keyup and curr_down < prev_keyup)
+                    rollovers.append(is_rollover)
+            
+            median_iki = float(np.median(ikis)) if ikis else 0
+            threshold = median_iki * 1.8 if median_iki > 0 else 300
+            
+            snippet_boundaries = []
+            for s in request.snippets:
+                if s.started_at and s.completed_at:
+                    snippet_boundaries.append(SnippetBoundary(startTime=s.started_at, endTime=s.completed_at))
+            
+            for i, e in enumerate(valid_events):
+                iki = ikis[i]
+                
+                # Snippet Index
+                s_idx = 0
+                ts = e['timestamp']
+                for idx, boundary in enumerate(snippet_boundaries):
+                    if ts <= boundary.endTime:
+                        s_idx = idx
+                        break
+                else:
+                    if snippet_boundaries:
+                        s_idx = len(snippet_boundaries) - 1
+                
+                replay_events.append(ReplayEvent(
+                    char=e['key'],
+                    iki=iki,
+                    isChunkStart=(iki > threshold),
+                    isError=False,
+                    snippetIndex=s_idx,
+                    isRollover=rollovers[i]
+                ))
+
+        chunk_starts = sum(1 for e in replay_events if e.isChunkStart)
+        avg_chunk_length = len(replay_events) / (1 + chunk_starts) if replay_events else 0.0
+
+        # Heatmap IKI
+        for i in range(1, len(sorted_events)):
+            curr = sorted_events[i]
+            prev = sorted_events[i-1]
+            if curr['timestamp'] > prev['timestamp']:
+                iki = curr['timestamp'] - prev['timestamp']
+                char = curr['key'].lower()
+                if char not in char_iki_stats:
+                    char_iki_stats[char] = {'sum': 0.0, 'count': 0}
+                char_iki_stats[char]['sum'] += iki
+                char_iki_stats[char]['count'] += 1
+                
+        heatmap_data = {}
+        for char, stats in extractor.char_stats.items():
+            if stats['presses'] > 0:
+                acc = 1.0 - (stats['errors'] / stats['presses'])
+                avg_key_iki = 0
+                if char in char_iki_stats and char_iki_stats[char]['count'] > 0:
+                    avg_key_iki = char_iki_stats[char]['sum'] / char_iki_stats[char]['count']
+                speed = max(0.0, min(1.0, 1.0 - (avg_key_iki - 50) / 250))
+                heatmap_data[char] = {"accuracy": acc, "speed": speed}
+
+        analytics = AnalyticsResponse(
+            smoothness=cv_to_score(cv_global),
+            rollover=rollover_rate * 100.0,
+            leftFluency=cv_to_score(cv_L2L),
+            rightFluency=cv_to_score(cv_R2R),
+            crossFluency=cv_to_score(cv_cross),
+            speed=request.wpm,
+            accuracy=request.accuracy,
+            avgIki=avgIki,
+            kspc=kspc,
+            errors=extractor.total_errors,
+            heatmapData=heatmap_data,
+            speedSeries=speed_series,
+            replayEvents=replay_events,
+            avgChunkLength=avg_chunk_length
         )
 
-        return response
+        return SessionResponse(
+            session_id=str(db_session.id),
+            reward=total_session_reward,
+            durationSeconds=request.durationSeconds,
+            wpm=request.wpm,
+            accuracy=request.accuracy,
+            errors=request.errors,
+            analytics=analytics
+        )
 
     except Exception as e:
         db.rollback()
         logger.exception("Failed to save session")
-        raise HTTPException(status_code=500, detail="Failed to save session")
+        raise HTTPException(status_code=500, detail=str(e))

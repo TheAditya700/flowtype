@@ -33,7 +33,7 @@ class VectorStore:
     
     def add(self, embeddings: np.ndarray, metadata: list[dict]):
         """Add vectors and metadata to index"""
-        self.index.add(embeddings)
+        self.index.add(embeddings) # type: ignore
         self.metadata.extend(metadata)
     
     def search(
@@ -53,7 +53,7 @@ class VectorStore:
         distances, indices = self.index.search(
             query_vector.reshape(1, -1).astype('float32'), 
             k
-        )
+        ) # pyright: ignore[reportCallIssue]
         
         results = []
         for dist, idx in zip(distances[0], indices[0]):

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { fetchUserProfile, calculateSessionMetrics } from '../../api/client';
-import { UserProfile, KeystrokeEvent, AnalyticsResponse, SnippetLog } from '../../types';
+import { fetchUserProfile } from '../../api/client'; // calculateSessionMetrics removed
+import { UserProfile, AnalyticsResponse, SessionResponse } from '../../types'; // KeystrokeEvent, SnippetLog removed
 import { Play } from 'lucide-react';
 
 // New Widgets
@@ -15,13 +15,7 @@ import LifetimeStatsBox from './LifetimeStatsBox';
 import ConfidenceWidget from './ConfidenceWidget';
 
 interface ResultsDashboardProps {
-  keystrokeEvents: KeystrokeEvent[];
-  wpm: number;
-  rawWpm: number;
-  accuracy: number;
-  duration: number;
-  snippetText: string;
-  snippetLogs?: SnippetLog[]; 
+  sessionResult: SessionResponse; // Now receiving the complete SessionResponse
   onContinue: () => void;
 }
 
@@ -38,19 +32,16 @@ interface StatsData {
 }
 
 const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
-  keystrokeEvents,
-  wpm,
-  rawWpm,
-  accuracy,
-  duration,
-  snippetText,
-  snippetLogs = [],
+  sessionResult, // Destructure sessionResult
   onContinue
 }) => {
   const { isAuthenticated, user } = useAuth();
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [sessionAnalytics, setSessionAnalytics] = useState<AnalyticsResponse | null>(null);
   const [previousStats, setPreviousStats] = useState<StatsData | undefined>(undefined);
+
+  // Analytics data is now directly from sessionResult
+  const sessionAnalytics: AnalyticsResponse = sessionResult.analytics;
+  const { wpm, accuracy } = sessionResult; // Extract overall WPM and accuracy
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -67,66 +58,37 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
   }, [isAuthenticated, user?.id]);
 
   useEffect(() => {
-    const fetchAnalytics = async () => {
+    // --- Previous Stats Logic ---
+    const stored = localStorage.getItem('flowtype_last_run_stats');
+    if (stored) {
         try {
-            // Map logs to boundaries
-            const snippetBoundaries = snippetLogs.map(log => ({
-                startTime: new Date(log.started_at).getTime(),
-                endTime: new Date(log.completed_at).getTime()
-            }));
-
-            const result = await calculateSessionMetrics({
-                keystrokeData: keystrokeEvents,
-                wpm,
-                accuracy,
-                snippetBoundaries: snippetBoundaries.length > 0 ? snippetBoundaries : undefined
-            });
-            setSessionAnalytics(result);
-            
-            // Handle Previous Stats Logic
-            const stored = localStorage.getItem('flowtype_last_run_stats');
-            if (stored) {
-                try {
-                    setPreviousStats(JSON.parse(stored));
-                } catch (e) {
-                    console.warn("Failed to parse previous stats", e);
-                }
-            }
-            
-            // Construct current stats object
-            const currentStats: StatsData = {
-                wpm,
-                rawWpm,
-                time: duration,
-                accuracy,
-                avgChunkLength: result.avgChunkLength,
-                errors: result.errors,
-                kspc: result.kspc,
-                avgIki: result.avgIki,
-                rolloverRate: result.rollover / 100
-            };
-            
-            // Save current as new previous for NEXT time
-            localStorage.setItem('flowtype_last_run_stats', JSON.stringify(currentStats));
-
-        } catch (error) {
-            console.error("Failed to fetch session analytics", error);
+            setPreviousStats(JSON.parse(stored));
+        } catch (e) {
+            console.warn("Failed to parse previous stats", e);
         }
+    }
+    
+    // Construct current stats object for comparison and next 'previous'
+    const currentStats: StatsData = {
+        wpm: sessionResult.wpm,
+        rawWpm: sessionResult.wpm, // Assuming wpm in sessionResult is effective WPM, rawWpm not explicitly passed
+        time: sessionResult.durationSeconds,
+        accuracy: sessionResult.accuracy,
+        avgChunkLength: sessionAnalytics.avgChunkLength,
+        errors: sessionAnalytics.errors,
+        kspc: sessionAnalytics.kspc,
+        avgIki: sessionAnalytics.avgIki,
+        rolloverRate: sessionAnalytics.rollover / 100
     };
     
-    if (keystrokeEvents.length > 0) {
-        fetchAnalytics();
-    }
-  }, [keystrokeEvents, wpm, accuracy, snippetLogs, rawWpm, duration]);
+    // Save current as new previous for NEXT time
+    localStorage.setItem('flowtype_last_run_stats', JSON.stringify(currentStats));
 
-  if (!sessionAnalytics) {
-    return (
-        <div className="flex items-center justify-center min-h-[400px]">
-            <div className="text-xl font-mono animate-pulse text-subtle">Analyzing flow...</div>
-        </div>
-    );
-  }
+  }, [sessionResult, sessionAnalytics]); // Dependencies updated
 
+  // No longer need to check if sessionAnalytics is null, as it's directly from props
+  // and type-guaranteed by SessionResponse
+  
   return (
     <div className="p-6 max-w-[1800px] mx-auto flex flex-col gap-6">
       
@@ -178,10 +140,10 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
         <div className="lg:col-span-1">
           <RawStatsBox 
             stats={{
-              wpm,
-              rawWpm,
-              time: duration,
-              accuracy,
+              wpm: sessionResult.wpm,
+              rawWpm: sessionResult.wpm, // Adjust if rawWpm is different from sessionResult.wpm
+              time: sessionResult.durationSeconds,
+              accuracy: sessionResult.accuracy,
               avgChunkLength: sessionAnalytics.avgChunkLength,
               errors: sessionAnalytics.errors,
               kspc: sessionAnalytics.kspc,

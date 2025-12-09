@@ -1,4 +1,4 @@
-import { UserState, SessionCreateRequest, SnippetResponse, UserCreate, Token, UserResponse, SnippetRetrieveResponse, UserProfile, AnalyticsRequest, AnalyticsResponse } from '../types';
+import { UserState, SessionCreateRequest, SnippetResponse, UserCreate, Token, UserResponse, SnippetRetrieveResponse, UserProfile, SessionResponse, AnalyticsRequest, AnalyticsResponse } from '../types';
 
 // @ts-ignore - Vite env type
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -48,12 +48,12 @@ async function callApi<T>(
     throw new Error(errorData.detail || 'API request failed');
   }
   
-  // Handle 204 No Content for cases like saveSession
+  // Handle 204 No Content for cases where the API explicitly returns nothing
   if (response.status === 204) {
-    return {} as T; // Return empty object for no content
+    return {} as T; // Return empty object for no content, for a Promise<void> type
   }
 
-  return response.json();
+  return response.json() as Promise<T>; // Ensure it returns the JSON directly
 }
 
 // Auth API Calls
@@ -101,19 +101,11 @@ export async function fetchNextSnippet(userState: UserState, currentSnippetId?: 
   return null;
 }
 
-export async function saveSession(session: SessionCreateRequest): Promise<void> {
-  // saveSession might need user_id from auth for proper telemetry
-  // For now, it doesn't require auth token, as sessions can be anonymous.
-  // If we decide to link all sessions to authenticated users, this would change.
-  await callApi<void>('/sessions', 'POST', session);
+export async function saveSession(session: SessionCreateRequest): Promise<SessionResponse> {
+  return callApi<SessionResponse>('/sessions', 'POST', session);
 }
 
 // New: Fetch User Profile (for dashboard)
 export async function fetchUserProfile(): Promise<UserProfile> {
     return callApi<UserProfile>(`/users/me/profile`, 'GET', undefined, true);
-}
-
-// New: Calculate Session Metrics
-export async function calculateSessionMetrics(data: AnalyticsRequest): Promise<AnalyticsResponse> {
-    return callApi<AnalyticsResponse>('/analytics/calculate', 'POST', data);
 }

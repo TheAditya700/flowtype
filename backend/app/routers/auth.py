@@ -1,4 +1,5 @@
 from datetime import timedelta
+from typing import Optional
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -14,6 +15,7 @@ from app.config import settings
 router = APIRouter()
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 
 def get_db():
     db = SessionLocal()
@@ -45,6 +47,22 @@ async def get_current_active_user(current_user: User = Depends(get_current_user)
     # You can add checks here for active status if needed.
     return current_user
 
+async def get_current_user_optional(token: Optional[str] = Depends(oauth2_scheme_optional), db: Session = Depends(get_db)) -> Optional[User]:
+    if not token:
+        return None
+    try:
+        payload = decode_access_token(token)
+        if payload is None:
+            return None
+        username: str = payload.get("sub")
+        if username is None:
+            return None
+        
+        token_data = TokenData(username=username)
+        user = db.query(User).filter(User.username == token_data.username).first()
+        return user
+    except Exception:
+        return None
 
 @router.post("/register", response_model=UserResponse)
 def register_user(user_in: UserCreate, db: Session = Depends(get_db)):
@@ -73,7 +91,7 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )

@@ -7,7 +7,5 @@ psycopg2-binary
 alembic
 python-dotenv
 python-multipart
-redis
-rq
 passlib[bcrypt]
 python-jose[cryptography]

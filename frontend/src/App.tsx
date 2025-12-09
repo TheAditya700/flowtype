@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import TypingZone from './components/TypingZone';
 import { fetchNextSnippet, saveSession } from './api/client';
-import { UserState, SnippetLog, KeystrokeEvent, SessionCreateRequest, SnippetResult } from './types';
+import { UserState, SnippetLog, KeystrokeEvent, SessionCreateRequest, SnippetResult, SessionResponse } from './types'; // Import SessionResponse
 import { v4 as uuidv4 } from 'uuid'; 
 
 import TypingZoneStatsDisplay from './components/TypingZoneStatsDisplay';
@@ -43,6 +43,9 @@ function App() {
   const [pauseStartTime, setPauseStartTime] = useState<number | null>(null);
   const [totalPausedDuration, setTotalPausedDuration] = useState(0);
   
+  // State to hold the full session response from the backend
+  const [sessionResultData, setSessionResultData] = useState<SessionResponse | null>(null);
+
   const [sessionSummary, setSessionSummary] = useState({
     wpm: 0,
     rawWpm: 0,
@@ -118,7 +121,7 @@ function App() {
     }
   }, [snippetQueue.length, authLoading, userState.user_id]);
 
-  const handleSnippetComplete = (stats: { 
+  const handleSnippetComplete = async (stats: { // Made async
     wpm: number; 
     accuracy: number; 
     errors: number; 
@@ -219,7 +222,12 @@ function App() {
         flowScore: 0.0 
     };
 
-    saveSession(sessionPayload).catch(err => console.error("Failed to save session:", err));
+    try {
+        const response = await saveSession(sessionPayload);
+        setSessionResultData(response); // Store the full response
+    } catch (err) {
+        console.error("Failed to save session:", err);
+    }
   };
 
   const resetSession = () => {
@@ -255,15 +263,16 @@ function App() {
   const handleContinue = () => {
     // 1. Reset Session Data (Clear history, logs, timers)
     resetSession();
+    setSessionResultData(null); // Clear the session result data to hide dashboard
     
-    // 2. Remove the completed snippet from the queue
-    setSnippetQueue(prev => prev.slice(1));
+    // 2. Remove the completed snippet from the queue (already handled in handleSnippetComplete)
+    // setSnippetQueue(prev => prev.slice(1)); 
     
     // 3. Ensure we have enough snippets
     fetchMoreSnippets(userState, 2);
     
     // 4. Unpause (happens in resetSession too but ensuring logic)
-    setIsPaused(false);
+    // setIsPaused(false); // No need, resetSession already does this
   };
 
   if (authLoading) {
@@ -282,15 +291,9 @@ function App() {
 
       {/* Main Content Area */}
       <div className="flex-grow flex items-center justify-center w-full max-w-[1800px] mx-auto relative">
-         {isPaused ? (
+         {isPaused && sessionResultData ? ( // Conditionally render if data is available
             <ResultsDashboard 
-              keystrokeEvents={sessionSummary.keystrokeEvents} 
-              wpm={sessionSummary.wpm}
-              rawWpm={sessionSummary.rawWpm}
-              accuracy={sessionSummary.accuracy}
-              duration={sessionSummary.duration}
-              snippetText={sessionSummary.text}
-              snippetLogs={snippetLogs}
+              sessionResult={sessionResultData} // Pass the full sessionResultData
               onContinue={handleContinue}
             />
          ) : (

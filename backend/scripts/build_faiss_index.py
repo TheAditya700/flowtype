@@ -17,12 +17,12 @@ def build_index():
     session = Session()
     
     logger.info("Fetching all snippets from the database...")
-    # Use processed_embedding for the index
-    snippets = session.query(Snippet).filter(Snippet.processed_embedding.isnot(None)).all()
+    # Use embedding (PCA output) for the index
+    snippets = session.query(Snippet).filter(Snippet.embedding.isnot(None)).all()
     session.close()
     
     if not snippets:
-        logger.warning("No snippets with processed_embeddings found. Run snippet vectorization first.")
+        logger.warning("No snippets with embeddings found. Run snippet condensation first.")
         return
 
     logger.info(f"Found {len(snippets)} snippets. Building index...")
@@ -31,8 +31,8 @@ def build_index():
     metadata = []
     
     for snippet in snippets:
-        # Use processed_embedding
-        emb_list = snippet.processed_embedding
+        # Use embedding
+        emb_list = snippet.embedding
         if not emb_list:
             continue
             
@@ -41,7 +41,9 @@ def build_index():
             "id": str(snippet.id),
             "words": snippet.words,
             "difficulty": snippet.difficulty_score,
-            "embedding": emb_list # Store PROCESSED embedding for Two-Tower ranking
+            # We don't need to store the embedding in metadata usually, just ID/words
+            # But let's keep it if needed for debugging
+            # "embedding": emb_list 
         })
 
     if not embeddings:

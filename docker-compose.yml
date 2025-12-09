@@ -21,16 +21,6 @@ services:
       timeout: 5s
       retries: 5
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
   backend:
     build: 
       context: ./backend
@@ -38,37 +28,16 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # Switch to postgres by uncommenting:
-      # - DATABASE_URL=postgresql://flowtype:flowtype@postgres:5432/flowtype
-      - DATABASE_URL=sqlite:///./data/flowtype.db
-      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://flowtype:flowtype@postgres:5432/flowtype
       - PYTHONUNBUFFERED=1
     volumes:
       - ./backend:/app
-      # Mount data separately to persist SQLite/FAISS index across rebuilds
+      # Mount data separately to persist FAISS index/models across rebuilds
       - ./backend/data:/app/data
     depends_on:
-      redis:
+      postgres:
         condition: service_healthy
-      # postgres:
-      #   condition: service_healthy
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-
-  worker:
-    build: 
-      context: ./backend
-      dockerfile: Dockerfile
-    environment:
-      - DATABASE_URL=sqlite:///./data/flowtype.db
-      - REDIS_URL=redis://redis:6379/0
-      - PYTHONUNBUFFERED=1
-    volumes:
-      - ./backend:/app
-      - ./backend/data:/app/data
-    depends_on:
-      redis:
-        condition: service_healthy
-    command: rq worker telemetry
 
   frontend:
     build:
@@ -91,8 +60,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile.train
     environment:
-      - DATABASE_URL=sqlite:///./data/flowtype.db
-      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://flowtype:flowtype@postgres:5432/flowtype
     volumes:
       - ./backend:/app
       - ./backend/data:/app/data
