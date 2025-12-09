@@ -50,10 +50,10 @@ function App() {
     totalWords: 0
   });
 
-  const [liveStats, setLiveStats] = useState({ wpm: 0, accuracy: 100, time: 0 });
+  const [liveStats, setLiveStats] = useState({ wpm: 0, accuracy: 100, time: 0, timeRemaining: null as number | null, sessionMode: 'free' as '15' | '30' | '60' | '120' | 'free', sessionStarted: false });
 
-  const handleStatsUpdate = useCallback((stats: { wpm: number; accuracy: number; time: number }) => {
-    setLiveStats({ wpm: stats.wpm, accuracy: stats.accuracy, time: stats.time });
+  const handleStatsUpdate = useCallback((stats: { wpm: number; accuracy: number; time: number; timeRemaining: number | null; sessionMode: '15' | '30' | '60' | '120' | 'free'; sessionStarted: boolean }) => {
+    setLiveStats({ wpm: stats.wpm, accuracy: stats.accuracy, time: stats.time, timeRemaining: stats.timeRemaining, sessionMode: stats.sessionMode, sessionStarted: stats.sessionStarted });
   }, []);
 
   const isFetching = useRef(false);
@@ -260,7 +260,7 @@ function App() {
     <div className="min-h-screen bg-bg text-text flex flex-col p-8 relative font-mono transition-colors duration-300 overflow-hidden">
       
       {/* Header Component (Top Right Controls) */}
-      <Header isPaused={!!sessionResultData} />
+      <Header isPaused={!!sessionResultData} sessionStarted={liveStats.sessionStarted} />
 
       {/* Main Content Area */}
       <div className="flex-grow flex items-center justify-center w-full max-w-[1800px] mx-auto relative">
@@ -273,10 +273,18 @@ function App() {
             <div className="flex flex-col items-center w-full">
                 {/* Dynamic Header Area (Above Snippet) */}
                 <div className="w-full mb-8 h-16 relative">
-                    <div className="absolute bottom-0 left-0 w-full flex justify-between items-end transition-all duration-500 opacity-100 translate-y-0">
-                        <h1 className="text-3xl font-bold text-subtle tracking-tighter">nerdtype</h1>
+                    <div className="absolute bottom-0 left-0 w-full flex justify-between items-end transition-all duration-500">
+                        <h1 className={`text-3xl font-bold text-subtle tracking-tighter ${
+                            !liveStats.sessionStarted ? 'opacity-0 pointer-events-none' : 'opacity-100 transition-opacity duration-500'
+                        }`}>nerdtype</h1>
                         {snippetQueue.length > 0 && (
-                            <TypingZoneStatsDisplay wpm={liveStats.wpm} accuracy={liveStats.accuracy} time={liveStats.time} />
+                            <TypingZoneStatsDisplay 
+                                wpm={liveStats.wpm} 
+                                accuracy={liveStats.accuracy} 
+                                time={liveStats.time}
+                                sessionMode={liveStats.sessionMode}
+                                timeRemaining={liveStats.timeRemaining}
+                            />
                         )}
                     </div>
                 </div>

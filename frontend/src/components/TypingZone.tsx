@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import useTypingSession from '../hooks/useTypingSession';
 import useWPMCalculation from '../hooks/useWPMCalculation';
+import { useSessionMode } from '../context/SessionModeContext';
 import { KeystrokeEvent } from '../types';
 
 interface SnippetItem {
@@ -17,7 +18,7 @@ interface TypingZoneProps {
   snippets: SnippetItem[];
   onSnippetComplete: (stats: SnippetStats) => void;
   onRequestPause: () => void;
-  onStatsUpdate?: (stats: { wpm: number; accuracy: number; time: number }) => void;
+  onStatsUpdate?: (stats: { wpm: number; accuracy: number; time: number; timeRemaining: number | null; sessionMode: '15' | '30' | '60' | '120' | 'free'; sessionStarted: boolean }) => void;
 }
 
 const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, onRequestPause, onStatsUpdate }) => {
@@ -25,7 +26,11 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
   const [currentTyped, setCurrentTyped] = useState(''); 
   const [errors, setErrors] = useState(0);
   const [sessionStarted, setSessionStarted] = useState(false);
+  const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
   
+  // Session Mode Hook
+  const { sessionMode } = useSessionMode();
+
   // Derived State
   const wordIndex = typedHistory.length;
   const charIndex = currentTyped.length;
@@ -58,6 +63,34 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
   
   // Key Tracking for Rollover
   const pendingKeys = useRef<Record<string, string>>({});
+
+  // Timed session setup
+  useEffect(() => {
+    if (sessionMode !== 'free' && sessionStarted) {
+      const durationMs = parseInt(sessionMode) * 1000;
+      setTimeRemaining(durationMs);
+    }
+  }, [sessionMode, sessionStarted]);
+
+  // Countdown timer
+  useEffect(() => {
+    if (timeRemaining === null || timeRemaining <= 0) return;
+
+    const interval = setInterval(() => {
+      setTimeRemaining(prev => {
+        if (!prev) return prev;
+        const next = prev - 100;
+        if (next <= 0) {
+          // Auto-end session when time hits 0
+          onRequestPause();
+          return 0;
+        }
+        return next;
+      });
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [timeRemaining, onRequestPause]);
 
 
   // If there's no snippet, don't execute any further logic or render
@@ -128,9 +161,9 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
   // Call onStatsUpdate whenever wpm or accuracy changes
   useEffect(() => {
     if (onStatsUpdate) {
-      onStatsUpdate({ wpm, accuracy, time: sessionDuration });
+      onStatsUpdate({ wpm, accuracy, time: sessionDuration, timeRemaining, sessionMode, sessionStarted });
     }
-  }, [wpm, accuracy, sessionDuration, onStatsUpdate]);
+  }, [wpm, accuracy, sessionDuration, timeRemaining, sessionMode, sessionStarted, onStatsUpdate]);
 
   // Focus Handler
   const handleFocus = () => {
@@ -151,10 +184,12 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    // Pause
+    // Pause on Enter (only if in free mode and session has started)
     if (e.key === 'Enter') {
       e.preventDefault();
-      onRequestPause(); // Notify parent to switch view
+      if (sessionMode === 'free' && sessionStarted) {
+        onRequestPause(); // Notify parent to switch view
+      }
       return;
     }
 
@@ -349,6 +384,7 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
       onClick={handleFocus}
       ref={containerRef}
     >
+
       {/* Hidden Input for capturing typing */}
       <input
         ref={inputRef}

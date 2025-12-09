@@ -9,6 +9,8 @@ import SpeedGraph from './SpeedGraph';
 import FlowRadar from './FlowRadar';
 import RolloverBreakdownWidget from './RolloverBreakdownWidget';
 import ErrorMetricsWidget from './ErrorMetricsWidget';
+import IkiHistogramWidget from './IkiHistogramWidget';
+import SessionStatsWidget from './SessionStatsWidget';
 import KeyboardHeatmap from './KeyboardHeatmap';
 import ReplayChunkStrip from './ReplayChunkStrip';
 import SkillBars from './SkillBars';
@@ -100,7 +102,7 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                 accuracy={sessionResult.accuracy} 
                 consistency={sessionResult.smoothness} 
                 speed={sessionResult.wpm}
-                rawWpm={sessionResult.rawWpm}
+                durationSeconds={sessionResult.durationSeconds}
             />
         </div>
 
@@ -123,33 +125,23 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
           <KeyboardHeatmap charStats={sessionResult.heatmapData} />
         </div>
 
-        {/* --- Error Metrics (Row 4, single col) --- */}
+        {/* --- IKI Histogram (Row 3, single col) --- */}
         <div>
-            <ErrorMetricsWidget 
+            <IkiHistogramWidget 
+                replayEvents={sessionResult.replayEvents}
+            />
+        </div>
+
+        {/* --- Session Stats (Row 4, full width) --- */}
+        <div className="lg:col-span-3">
+            <SessionStatsWidget 
                 errors={sessionResult.errors}
+                rawWpm={sessionResult.rawWpm}
                 kspc={sessionResult.kspc}
-                avgIki={sessionResult.avgIki}
                 avgChunkLength={sessionResult.avgChunkLength}
+                rollover={sessionResult.rollover}
+                smoothness={sessionResult.smoothness}
             />
-        </div>
-
-        {/* --- Confidence (Row 4, single col) --- */}
-        <div>
-            <ConfidenceWidget 
-                left={sessionResult.leftFluency} 
-                right={sessionResult.rightFluency} 
-                cross={sessionResult.crossFluency} 
-            />
-        </div>
-
-        {/* --- Rollover/Chunking (Row 4, single col) --- */}
-        <div>
-          <RolloverBreakdownWidget 
-            overall={sessionResult.rollover}
-            l2l={sessionResult.rolloverL2L}
-            r2r={sessionResult.rolloverR2R}
-            cross={sessionResult.rolloverCross}
-          />
         </div>
 
       </div>

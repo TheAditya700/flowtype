@@ -1,13 +1,13 @@
 import React from 'react';
 
 interface SkillBarsProps {
-  accuracy: number;    // 0-1 or 0-100
-  consistency: number; // 0-100
-  speed: number;       // WPM
-  rawWpm?: number;     // Raw WPM (optional)
+  accuracy: number;      // 0-1 or 0-100
+  consistency: number;   // 0-100
+  speed: number;         // WPM
+  durationSeconds?: number; // Duration in seconds (optional)
 }
 
-const SkillBars: React.FC<SkillBarsProps> = ({ accuracy, consistency, speed, rawWpm }) => {
+const SkillBars: React.FC<SkillBarsProps> = ({ accuracy, consistency, speed, durationSeconds }) => {
   // Normalize accuracy to 0-100 if it's between 0-1
   const accuracyPercent = accuracy > 1 ? accuracy : accuracy * 100;
   
@@ -38,10 +38,10 @@ const SkillBars: React.FC<SkillBarsProps> = ({ accuracy, consistency, speed, raw
           <p className="text-sm text-gray-500 font-mono">WPM</p>
         </div>
 
-        {rawWpm !== undefined && (
+        {durationSeconds !== undefined && (
           <div className="flex items-baseline gap-3">
-            <p className="text-9xl font-bold text-gray-600 font-mono">{Math.round(rawWpm)}</p>
-            <p className="text-xs text-gray-600 font-mono">Raw</p>
+            <p className="text-9xl font-bold text-white font-mono">{Math.round(durationSeconds)}</p>
+            <p className="text-xs text-gray-300 font-mono">sec</p>
           </div>
         )}
       </div>

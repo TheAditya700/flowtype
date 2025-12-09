@@ -4,9 +4,11 @@ interface TypingZoneStatsDisplayProps {
   wpm: number;
   accuracy: number;
   time: number;
+  sessionMode: '15' | '30' | '60' | '120' | 'free';
+  timeRemaining: number | null;
 }
 
-const TypingZoneStatsDisplay: React.FC<TypingZoneStatsDisplayProps> = ({ wpm, accuracy, time }) => {
+const TypingZoneStatsDisplay: React.FC<TypingZoneStatsDisplayProps> = ({ wpm, accuracy, time, sessionMode, timeRemaining }) => {
   const formatTime = (seconds: number) => {
     const s = Math.round(seconds);
     if (s < 60) return `${s}s`;
@@ -15,11 +17,30 @@ const TypingZoneStatsDisplay: React.FC<TypingZoneStatsDisplayProps> = ({ wpm, ac
     return `${m}m ${remS}s`;
   };
 
+  const getDisplayTime = () => {
+    if (sessionMode !== 'free') {
+      // Show countdown for timed modes
+      if (timeRemaining !== null) {
+        const remainingSeconds = Math.ceil(timeRemaining / 1000);
+        return `${remainingSeconds}s`;
+      } else {
+        // Before session starts, show the total duration
+        return `${sessionMode}s`;
+      }
+    }
+    // Show elapsed time for free mode
+    return formatTime(time);
+  };
+
+  const getTimeLabel = () => {
+    return sessionMode !== 'free' ? 'remaining' : 'time';
+  };
+
   return (
     <div className="flex gap-8 text-xl text-subtle">
       <div>
-        <span className="text-sm text-subtle mr-2">time</span>
-        <span className="font-bold text-primary">{formatTime(time)}</span>
+        <span className="text-sm text-subtle mr-2">{getTimeLabel()}</span>
+        <span className="font-bold text-primary">{getDisplayTime()}</span>
       </div>
       <div>
         <span className="text-sm text-subtle mr-2">wpm</span>
