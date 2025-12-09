@@ -41,6 +41,17 @@ const ReplayChunkStrip: React.FC<ReplayChunkStripProps> = ({ events }) => {
       return idx >= startSnippetIdx && idx < endSnippetIdx;
   });
 
+  const visibleSnippetIndices = useMemo(() => {
+      const idxSet = new Set<number>();
+      visibleEvents.forEach(e => idxSet.add(e.snippetIndex ?? 0));
+      return Array.from(idxSet).sort((a, b) => a - b);
+  }, [visibleEvents]);
+
+  const needsGhostSnippet = visibleSnippetIndices.length === 1 && totalSnippets > 1;
+  const ghostEvents = needsGhostSnippet
+    ? visibleEvents.filter(e => (e.snippetIndex ?? 0) === visibleSnippetIndices[0])
+    : [];
+
   const canGoPrev = page > 0;
   const canGoNext = page < totalPages - 1;
 
@@ -96,13 +107,14 @@ const ReplayChunkStrip: React.FC<ReplayChunkStripProps> = ({ events }) => {
         </div>
       </div>
       
-      <div className="flex flex-wrap items-end content-start gap-y-6 min-h-[100px]">
+      <div className="flex flex-wrap items-end content-start gap-y-6 min-w-full">
         {visibleEvents.map((m, i) => {
           const heightPx = Math.min(50, (m.iki / 500) * 50);
           const color = getBarColor(m);
 
           const prevSnippetIndex = i > 0 ? visibleEvents[i-1].snippetIndex : m.snippetIndex;
           const isNewSnippet = m.snippetIndex !== prevSnippetIndex && i !== 0;
+          const isLastInSnippet = i === visibleEvents.length - 1 || (i < visibleEvents.length - 1 && visibleEvents[i+1].snippetIndex !== m.snippetIndex);
 
           return (
             <React.Fragment key={`char-fragment-${i}`}>
@@ -131,9 +143,55 @@ const ReplayChunkStrip: React.FC<ReplayChunkStripProps> = ({ events }) => {
                       {m.char === ' ' ? '\u00A0' : m.char}
                   </span>
               </div>
+              
+              {/* Invisible Reference Bar at 500ms (end of snippet) */}
+              {isLastInSnippet && (
+                <div 
+                    key={`ref-bar-${i}`} 
+                    className="flex flex-col items-center justify-end relative opacity-0 pointer-events-none"
+                >
+                    <div 
+                        className="w-2 bg-gray-700 rounded-t-sm mb-1"
+                        style={{ height: '50px' }}
+                    />
+                    <span className="font-mono text-xl leading-none px-[2px] min-w-[1ch]">\u00A0</span>
+                </div>
+              )}
             </React.Fragment>
           );
         })}
+
+        {needsGhostSnippet && (
+          <React.Fragment>
+            <div className="w-full h-px bg-gray-700 my-4" aria-hidden="true" />
+            {ghostEvents.map((m, i) => {
+              const heightPx = Math.min(50, (m.iki / 500) * 50);
+              const color = getBarColor(m);
+
+              return (
+                <div 
+                    key={`ghost-char-event-${i}`} 
+                    className={`flex flex-col items-center justify-end relative opacity-0 pointer-events-none select-none ${m.isChunkStart && mode === 'replay' ? 'ml-3' : ''}`}
+                    aria-hidden="true"
+                >
+                    <div 
+                        className={`w-2 ${color} opacity-80 rounded-t-sm mb-1 transition-all`}
+                        style={{ height: `${Math.max(4, heightPx)}px` }}
+                    />
+                    <span 
+                        className={`
+                          font-mono text-xl leading-none px-[2px] border-b-2 min-w-[1ch] text-center
+                          ${m.isError ? 'text-red-400 border-red-500' : 'text-gray-200 border-transparent'}
+                          ${m.isChunkStart && mode === 'replay' ? 'border-l-2 border-l-blue-500/50' : ''}
+                        `}
+                    >
+                        {m.char === ' ' ? '\u00A0' : m.char}
+                    </span>
+                </div>
+              );
+            })}
+          </React.Fragment>
+        )}
       </div>
       
       {/* Legend */}

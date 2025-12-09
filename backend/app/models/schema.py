@@ -65,9 +65,6 @@ class SessionCreateRequest(BaseModel):
     durationSeconds: float
     wordsTyped: int
     keystrokeData: List[KeystrokeEvent]
-    wpm: float
-    accuracy: float
-    errors: int
     difficultyLevel: float
 
     # Full snippet log
@@ -105,41 +102,39 @@ class ReplayEvent(BaseModel):
     snippetIndex: Optional[int] = None
     isRollover: Optional[bool] = False
 
-class AnalyticsResponse(BaseModel):
+class SessionResponse(BaseModel):
+    # Session metadata
+    session_id: str
+    reward: float
+    durationSeconds: float
+    
+    # Basic stats
+    wpm: float
+    rawWpm: float
+    accuracy: float
+    errors: int
+    
+    # Flow metrics
     smoothness: float
     rollover: float
     leftFluency: float
     rightFluency: float
     crossFluency: float
-    speed: float
-    accuracy: float
+    
+    # Hand-specific rollover rates
+    rolloverL2L: float
+    rolloverR2R: float
+    rolloverCross: float
     
     # Detailed stats for widgets
     avgIki: float
     kspc: float
-    errors: int
-    heatmapData: Dict[str, Dict[str, float]]
     avgChunkLength: float
+    heatmapData: Dict[str, Dict[str, float]]
     
     # Time Series and Replay
     speedSeries: List[SpeedPoint]
     replayEvents: List[ReplayEvent]
-
-
-# ------------------------------------------------------
-# Final API Session Response
-# ------------------------------------------------------
-class SessionResponse(BaseModel):
-    session_id: str
-    reward: float
-    
-    # Include original session summary stats for frontend
-    durationSeconds: float
-    wpm: float
-    accuracy: float
-    errors: int
-    
-    analytics: AnalyticsResponse
 
 
 # ------------------------------------------------------

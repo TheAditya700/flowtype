@@ -1,21 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { fetchUserProfile } from '../../api/client'; // calculateSessionMetrics removed
-import { UserProfile, AnalyticsResponse, SessionResponse } from '../../types'; // KeystrokeEvent, SnippetLog removed
+import { fetchUserProfile } from '../../api/client';
+import { UserProfile, SessionResponse } from '../../types';
 import { Play } from 'lucide-react';
 
 // New Widgets
 import SpeedGraph from './SpeedGraph';
 import FlowRadar from './FlowRadar';
-import RawStatsBox from './RawStatsBox';
+import RolloverBreakdownWidget from './RolloverBreakdownWidget';
+import ErrorMetricsWidget from './ErrorMetricsWidget';
 import KeyboardHeatmap from './KeyboardHeatmap';
 import ReplayChunkStrip from './ReplayChunkStrip';
 import SkillBars from './SkillBars';
-import LifetimeStatsBox from './LifetimeStatsBox';
 import ConfidenceWidget from './ConfidenceWidget';
 
 interface ResultsDashboardProps {
-  sessionResult: SessionResponse; // Now receiving the complete SessionResponse
+  sessionResult: SessionResponse;
   onContinue: () => void;
 }
 
@@ -32,16 +32,15 @@ interface StatsData {
 }
 
 const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
-  sessionResult, // Destructure sessionResult
+  sessionResult,
   onContinue
 }) => {
   const { isAuthenticated, user } = useAuth();
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [previousStats, setPreviousStats] = useState<StatsData | undefined>(undefined);
 
-  // Analytics data is now directly from sessionResult
-  const sessionAnalytics: AnalyticsResponse = sessionResult.analytics;
-  const { wpm, accuracy } = sessionResult; // Extract overall WPM and accuracy
+  // All data is now directly in sessionResult (no nested analytics)
+  const { wpm, accuracy, rawWpm } = sessionResult;
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -74,103 +73,83 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
         rawWpm: sessionResult.wpm, // Assuming wpm in sessionResult is effective WPM, rawWpm not explicitly passed
         time: sessionResult.durationSeconds,
         accuracy: sessionResult.accuracy,
-        avgChunkLength: sessionAnalytics.avgChunkLength,
-        errors: sessionAnalytics.errors,
-        kspc: sessionAnalytics.kspc,
-        avgIki: sessionAnalytics.avgIki,
-        rolloverRate: sessionAnalytics.rollover / 100
+        avgChunkLength: sessionResult.avgChunkLength,
+        errors: sessionResult.errors,
+        kspc: sessionResult.kspc,
+        avgIki: sessionResult.avgIki,
+        rolloverRate: sessionResult.rollover / 100
     };
     
     // Save current as new previous for NEXT time
     localStorage.setItem('flowtype_last_run_stats', JSON.stringify(currentStats));
 
-  }, [sessionResult, sessionAnalytics]); // Dependencies updated
+  }, [sessionResult]); // Dependencies updated
 
-  // No longer need to check if sessionAnalytics is null, as it's directly from props
+  // No longer need to check if analytics is null, as it's directly from props
   // and type-guaranteed by SessionResponse
   
   return (
     <div className="p-6 max-w-[1800px] mx-auto flex flex-col gap-6">
       
-      {/* Grid Layout: 4 Columns */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      {/* Grid Layout: 3 Columns */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* --- Row 1 --- */}
-        {/* Col 1: Skill Bars */}
-        <div className="lg:col-span-1">
+        {/* --- Left Column: Skill Bars (Spans 2 rows) --- */}
+        <div className="lg:row-span-2">
             <SkillBars 
-                accuracy={accuracy} 
-                consistency={sessionAnalytics.smoothness} 
-                speed={wpm} 
+                accuracy={sessionResult.accuracy} 
+                consistency={sessionResult.smoothness} 
+                speed={sessionResult.wpm}
+                rawWpm={sessionResult.rawWpm}
             />
         </div>
-        {/* Col 2-3: Speed Graph */}
+
+        {/* --- Top Right Section --- */}
+        {/* Col 2-3: Speed Graph (Spans 2 cols) */}
         <div className="lg:col-span-2">
-          <SpeedGraph data={sessionAnalytics.speedSeries} />
-        </div>
-        {/* Col 4: Flow Radar */}
-        <div className="lg:col-span-1">
-          <FlowRadar metrics={{
-              smoothness: sessionAnalytics.smoothness,
-              rollover: sessionAnalytics.rollover,
-              leftFluency: sessionAnalytics.leftFluency,
-              rightFluency: sessionAnalytics.rightFluency,
-              crossFluency: sessionAnalytics.crossFluency
-          }} />
+          <SpeedGraph data={sessionResult.speedSeries} />
         </div>
 
+        {/* --- Flow Radar (Row 2, left side of right section) --- */}
+       
 
-        {/* --- Row 2 --- */}
-        {/* Col 1: Lifetime Stats */}
-        <div className="lg:col-span-1">
-            <LifetimeStatsBox 
-                stats={userProfile?.stats || { 
-                    total_sessions: 0, 
-                    avg_wpm: 0, 
-                    avg_accuracy: 0,
-                    total_time_typing: 0,
-                    best_wpm_15: 0,
-                    best_wpm_30: 0,
-                    best_wpm_60: 0,
-                    best_wpm_120: 0
-                }}
+        {/* --- Replay Strip (Spans 2 cols, row 2 right side) --- */}
+        <div className="lg:col-span-2">
+            <ReplayChunkStrip events={sessionResult.replayEvents} />
+        </div>
+
+        {/* --- Keyboard Heatmap (Spans 2 cols, row 3) --- */}
+        <div className="lg:col-span-2">
+          <KeyboardHeatmap charStats={sessionResult.heatmapData} />
+        </div>
+
+        {/* --- Error Metrics (Row 4, single col) --- */}
+        <div>
+            <ErrorMetricsWidget 
+                errors={sessionResult.errors}
+                kspc={sessionResult.kspc}
+                avgIki={sessionResult.avgIki}
+                avgChunkLength={sessionResult.avgChunkLength}
             />
         </div>
-        {/* Col 2: Raw Stats */}
-        <div className="lg:col-span-1">
-          <RawStatsBox 
-            stats={{
-              wpm: sessionResult.wpm,
-              rawWpm: sessionResult.wpm, // Adjust if rawWpm is different from sessionResult.wpm
-              time: sessionResult.durationSeconds,
-              accuracy: sessionResult.accuracy,
-              avgChunkLength: sessionAnalytics.avgChunkLength,
-              errors: sessionAnalytics.errors,
-              kspc: sessionAnalytics.kspc,
-              avgIki: sessionAnalytics.avgIki,
-              rolloverRate: sessionAnalytics.rollover / 100
-            }} 
-            previousStats={previousStats}
-          />
-        </div>
-        {/* Col 3-4: Heatmap */}
-        <div className="lg:col-span-2">
-          <KeyboardHeatmap charStats={sessionAnalytics.heatmapData} />
-        </div>
 
-
-        {/* --- Row 3 --- */}
-        {/* Col 1: Confidence Widget */}
-        <div className="lg:col-span-1">
+        {/* --- Confidence (Row 4, single col) --- */}
+        <div>
             <ConfidenceWidget 
-                left={sessionAnalytics.leftFluency} 
-                right={sessionAnalytics.rightFluency} 
-                cross={sessionAnalytics.crossFluency} 
+                left={sessionResult.leftFluency} 
+                right={sessionResult.rightFluency} 
+                cross={sessionResult.crossFluency} 
             />
         </div>
-        {/* Col 2-4: Replay Strip */}
-        <div className="lg:col-span-3">
-            <ReplayChunkStrip events={sessionAnalytics.replayEvents} />
+
+        {/* --- Rollover/Chunking (Row 4, single col) --- */}
+        <div>
+          <RolloverBreakdownWidget 
+            overall={sessionResult.rollover}
+            l2l={sessionResult.rolloverL2L}
+            r2r={sessionResult.rolloverR2R}
+            cross={sessionResult.rolloverCross}
+          />
         </div>
 
       </div>

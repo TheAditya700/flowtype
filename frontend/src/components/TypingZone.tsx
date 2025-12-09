@@ -10,12 +10,7 @@ interface SnippetItem {
 }
 
 interface SnippetStats {
-  wpm: number;
-  accuracy: number;
-  errors: number;
-  duration: number;
   keystrokeEvents: KeystrokeEvent[];
-  startedAt: Date;
 }
 
 interface TypingZoneProps {
@@ -52,16 +47,18 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
     sessionDuration,
     keystrokeEvents,
     startSession,
-    endSession,
-    pauseSession, // New
     addKeystrokeEvent,
     updateKeystrokeEvent
   } = useTypingSession();
+
+  // Track the start index of keystrokes for each snippet so we can slice per-snippet events
+  const snippetEventOffset = useRef(0);
 
   const { wpm, accuracy } = useWPMCalculation(keystrokeEvents, sessionDuration);
   
   // Key Tracking for Rollover
   const pendingKeys = useRef<Record<string, string>>({});
+
 
   // If there's no snippet, don't execute any further logic or render
   if (!currentSnippet) return null;
@@ -157,7 +154,6 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
     // Pause
     if (e.key === 'Enter') {
       e.preventDefault();
-      pauseSession(); // Pause tracking immediately
       onRequestPause(); // Notify parent to switch view
       return;
     }
@@ -224,23 +220,17 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
       // Check Completion
       if (newHistory.length === words.length) {
         // Snippet Complete
-        const finalDuration = sessionDuration;
-        endSession();
-        
+        const snippetEvents = keystrokeEvents.slice(snippetEventOffset.current);
+        snippetEventOffset.current = keystrokeEvents.length;
+
         onSnippetComplete({
-          wpm,
-          accuracy: accuracy / 100,
-          errors,
-          duration: finalDuration,
-          keystrokeEvents,
-          startedAt: new Date(sessionStartTime || Date.now())
+          keystrokeEvents: snippetEvents
         });
         
-        // Reset
+        // Reset for next snippet but keep session running
         setTypedHistory([]);
         setCurrentTyped('');
         setErrors(0);
-        setSessionStarted(false);
       }
       return;
     }

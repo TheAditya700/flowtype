@@ -31,17 +31,10 @@ function App() {
       backspaceRate: 0,
       hesitationCount: 0,
       recentErrors: [],
-      currentDifficulty: 5,
     };
   });
   const [snippetLogs, setSnippetLogs] = useState<SnippetLog[]>([]);
   const [allKeystrokes, setAllKeystrokes] = useState<KeystrokeEvent[]>([]);
-  
-  // Pause & Timer State
-  const [isPaused, setIsPaused] = useState(false);
-  const [sessionStartedAt, setSessionStartedAt] = useState<Date | null>(null);
-  const [pauseStartTime, setPauseStartTime] = useState<number | null>(null);
-  const [totalPausedDuration, setTotalPausedDuration] = useState(0);
   
   // State to hold the full session response from the backend
   const [sessionResultData, setSessionResultData] = useState<SessionResponse | null>(null);
@@ -122,29 +115,20 @@ function App() {
   }, [snippetQueue.length, authLoading, userState.user_id]);
 
   const handleSnippetComplete = async (stats: { // Made async
-    wpm: number; 
-    accuracy: number; 
-    errors: number; 
-    duration: number; 
     keystrokeEvents: KeystrokeEvent[]; 
-    startedAt: Date 
   }) => {
-    if (!sessionStartedAt) {
-        setSessionStartedAt(stats.startedAt);
-    }
-
     const currentSnippet = snippetQueue[0];
     if (!currentSnippet) return;
 
     const safeDifficulty = currentSnippet.difficulty ?? 5.0;
 
-    // Create log
+    // Create log (timestamps come from keystroke events)
     const log: SnippetLog = {
         snippet_id: currentSnippet.id,
-        started_at: stats.startedAt.toISOString(),
-        completed_at: new Date().toISOString(),
-        wpm: stats.wpm,
-        accuracy: stats.accuracy,
+        started_at: new Date(stats.keystrokeEvents[0]?.timestamp || Date.now()).toISOString(),
+        completed_at: new Date(stats.keystrokeEvents[stats.keystrokeEvents.length - 1]?.timestamp || Date.now()).toISOString(),
+        wpm: 0, // Will be calculated in backend
+        accuracy: 0, // Will be calculated in backend
         difficulty: safeDifficulty
     };
 
@@ -152,21 +136,19 @@ function App() {
     const updatedAllKeystrokes = [...allKeystrokes, ...stats.keystrokeEvents];
     setAllKeystrokes(updatedAllKeystrokes);
     
-    // Aggregate session stats
-    const now = new Date();
-    const startTime = sessionStartedAt || stats.startedAt;
-    
-    // Correct duration calculation: Total Elapsed - Total Paused Time
-    const totalElapsed = now.getTime() - startTime.getTime();
-    const totalDuration = Math.max(0, (totalElapsed - totalPausedDuration) / 1000);
-    
+    // Calculate stats from all keystrokes for display purposes only
     const correctKeystrokes = updatedAllKeystrokes.filter(k => k.isCorrect && !k.isBackspace).length;
-    const currentSessionWpm = totalDuration > 0 ? (correctKeystrokes / 5) / (totalDuration / 60) : 0;
+    const totalErrors = updatedAllKeystrokes.filter(k => !k.isCorrect && !k.isBackspace).length;
     
-    const totalKeystrokes = updatedAllKeystrokes.length;
-    const currentSessionRawWpm = totalDuration > 0 ? (totalKeystrokes / 5) / (totalDuration / 60) : 0;
+    // Calculate duration from keystroke timestamps
+    const sortedKeystrokes = [...updatedAllKeystrokes].sort((a, b) => a.timestamp - b.timestamp);
+    const duration_ms = sortedKeystrokes[sortedKeystrokes.length - 1].timestamp - sortedKeystrokes[0].timestamp;
+    const duration_seconds = duration_ms / 1000;
     
-    const currentSessionAccuracy = updatedAllKeystrokes.length > 0 ? (updatedAllKeystrokes.filter(k => k.isCorrect).length / updatedAllKeystrokes.length) : 0;
+    const currentSessionWpm = duration_seconds > 0 ? (correctKeystrokes / 5) / (duration_seconds / 60) : 0;
+    const totalKeystrokes = updatedAllKeystrokes.filter(k => !k.isBackspace).length;
+    const currentSessionRawWpm = duration_seconds > 0 ? (totalKeystrokes / 5) / (duration_seconds / 60) : 0;
+    const currentSessionAccuracy = totalKeystrokes > 0 ? (correctKeystrokes / totalKeystrokes) : 0;
 
     const snippetText = currentSnippet.words.join(' ');
     const newText = sessionSummary.text ? sessionSummary.text + " " + snippetText : snippetText;
@@ -176,8 +158,8 @@ function App() {
       wpm: currentSessionWpm,
       rawWpm: currentSessionRawWpm,
       accuracy: currentSessionAccuracy,
-      errors: sessionSummary.errors + stats.errors,
-      duration: totalDuration,
+      errors: totalErrors,
+      duration: duration_seconds,
       keystrokeEvents: updatedAllKeystrokes,
       text: newText,
       totalWords: newTotalWords
@@ -186,59 +168,59 @@ function App() {
     // Update User State
     const newUserState = {
       ...userState,
-      rollingWpm: stats.wpm,
-      rollingAccuracy: stats.accuracy,
-      currentDifficulty: Math.max(1, Math.min(10, userState.currentDifficulty + (stats.accuracy > 0.9 ? 0.5 : -0.5))),
+      rollingWpm: currentSessionWpm,
+      rollingAccuracy: currentSessionAccuracy,
     };
     setUserState(newUserState);
     
-    const updatedRecentIds = [...recentSnippetIds, currentSnippet.id].filter(Boolean).slice(-20); // Filter falsy values
+    const updatedRecentIds = [...recentSnippetIds, currentSnippet.id].filter(Boolean).slice(-20);
     setRecentSnippetIds(updatedRecentIds);
 
+    // Move to next snippet (don't save session yet - wait for Enter key)
     setSnippetQueue(prev => prev.slice(1));
     fetchMoreSnippets(newUserState, 1, updatedRecentIds);
+  };
 
-    // Save Session to Backend
-    const snippetResult: SnippetResult = {
-        snippet_id: currentSnippet.id,
-        wpm: stats.wpm,
-        accuracy: stats.accuracy,
-        difficulty: safeDifficulty,
-        started_at: stats.startedAt.getTime(),
-        completed_at: Date.now()
-    };
+  const handlePause = async () => {
+      // User pressed Enter - end session and save to backend
+      if (allKeystrokes.length === 0) return; // No keystrokes to save
 
-    const sessionPayload: SessionCreateRequest = {
-        user_id: userState.user_id,
-        durationSeconds: totalDuration,
-        wordsTyped: newTotalWords,
-        keystrokeData: updatedAllKeystrokes,
-        wpm: currentSessionWpm,
-        accuracy: currentSessionAccuracy,
-        errors: sessionSummary.errors + stats.errors,
-        difficultyLevel: safeDifficulty,
-        snippets: [snippetResult],
-        user_state: userState, 
-        flowScore: 0.0 
-    };
+      const sortedKeystrokes = [...allKeystrokes].sort((a, b) => a.timestamp - b.timestamp);
+      const duration_ms = sortedKeystrokes[sortedKeystrokes.length - 1].timestamp - sortedKeystrokes[0].timestamp;
+      const duration_seconds = duration_ms / 1000;
 
-    try {
-        const response = await saveSession(sessionPayload);
-        setSessionResultData(response); // Store the full response
-    } catch (err) {
-        console.error("Failed to save session:", err);
-    }
+      // Build snippet results from logs
+      const snippetResults: SnippetResult[] = snippetLogs.map(log => ({
+        snippet_id: log.snippet_id,
+        wpm: 0, // Backend will recalculate
+        accuracy: 0, // Backend will recalculate
+        difficulty: log.difficulty,
+        started_at: new Date(log.started_at).getTime(),
+        completed_at: new Date(log.completed_at).getTime()
+      }));
+
+      const sessionPayload: SessionCreateRequest = {
+          user_id: userState.user_id,
+          durationSeconds: duration_seconds,
+          wordsTyped: sessionSummary.totalWords,
+          keystrokeData: allKeystrokes,
+          difficultyLevel: snippetLogs.length > 0 ? snippetLogs[0].difficulty : 5.0,
+          snippets: snippetResults,
+          user_state: userState, 
+          flowScore: 0.0 
+      };
+
+      try {
+          const response = await saveSession(sessionPayload);
+          setSessionResultData(response); // Store the full response - this triggers dashboard view
+      } catch (err) {
+          console.error("Failed to save session:", err);
+      }
   };
 
   const resetSession = () => {
     setSnippetLogs([]);
     setAllKeystrokes([]);
-    setSessionStartedAt(null);
-    
-    // Reset Pause State
-    setIsPaused(false);
-    setPauseStartTime(null);
-    setTotalPausedDuration(0);
     
     setSessionSummary({
       wpm: 0, rawWpm: 0, accuracy: 0, errors: 0, duration: 0, keystrokeEvents: [], text: "", totalWords: 0
@@ -250,13 +232,7 @@ function App() {
       backspaceRate: 0,
       hesitationCount: 0,
       recentErrors: [],
-      currentDifficulty: 5,
     }));
-  };
-
-  const handlePause = () => {
-      setIsPaused(true);
-      setPauseStartTime(Date.now());
   };
 
   // This now serves as the "Continue" action
@@ -270,9 +246,6 @@ function App() {
     
     // 3. Ensure we have enough snippets
     fetchMoreSnippets(userState, 2);
-    
-    // 4. Unpause (happens in resetSession too but ensuring logic)
-    // setIsPaused(false); // No need, resetSession already does this
   };
 
   if (authLoading) {
@@ -287,11 +260,11 @@ function App() {
     <div className="min-h-screen bg-bg text-text flex flex-col p-8 relative font-mono transition-colors duration-300 overflow-hidden">
       
       {/* Header Component (Top Right Controls) */}
-      <Header isPaused={isPaused} />
+      <Header isPaused={!!sessionResultData} />
 
       {/* Main Content Area */}
       <div className="flex-grow flex items-center justify-center w-full max-w-[1800px] mx-auto relative">
-         {isPaused && sessionResultData ? ( // Conditionally render if data is available
+         {sessionResultData ? ( // Conditionally render if data is available
             <ResultsDashboard 
               sessionResult={sessionResultData} // Pass the full sessionResultData
               onContinue={handleContinue}
@@ -326,7 +299,7 @@ function App() {
       </div>
 
       {/* Footer Hint (Only when typing) */}
-      {!isPaused && (
+      {!sessionResultData && (
         <div className="absolute bottom-8 left-0 right-0 text-center text-subtle text-sm transition-opacity duration-300 opacity-100">
               <span className="bg-container px-2 py-1 rounded text-xs mr-2 text-text">enter</span> to pause
         </div>

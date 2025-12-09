@@ -1,52 +1,77 @@
 import React from 'react';
 
 interface SkillBarsProps {
-  accuracy: number;    // 0-100
+  accuracy: number;    // 0-1 or 0-100
   consistency: number; // 0-100
   speed: number;       // WPM
+  rawWpm?: number;     // Raw WPM (optional)
 }
 
-const SkillBar: React.FC<{ label: string; value: number; color: string; max?: number; format?: (v: number) => string }> = ({ label, value, color, max = 100, format }) => {
-  const percentage = Math.min(100, Math.max(0, (value / max) * 100));
+const SkillBars: React.FC<SkillBarsProps> = ({ accuracy, consistency, speed, rawWpm }) => {
+  // Normalize accuracy to 0-100 if it's between 0-1
+  const accuracyPercent = accuracy > 1 ? accuracy : accuracy * 100;
   
-  return (
-    <div className="mb-4 last:mb-0">
-      <div className="flex justify-between text-xs font-medium text-gray-400 mb-1 uppercase tracking-wider">
-        <span>{label}</span>
-        <span className="text-gray-200">{format ? format(value) : Math.round(value)}</span>
-      </div>
-      <div className="h-2 w-full bg-gray-800 rounded-full overflow-hidden">
-        <div 
-          className={`h-full ${color} transition-all duration-1000 ease-out`} 
-          style={{ width: `${percentage}%` }} 
-        />
-      </div>
-    </div>
-  );
-};
+  // Calculate percentages for bars
+  const accuracyPercentage = Math.min(100, Math.max(0, accuracyPercent));
+  const consistencyPercentage = Math.min(100, Math.max(0, consistency));
+  const speedPercentage = Math.min(100, Math.max(0, (speed / 200) * 100)); // Max 200 WPM for visualization
 
-const SkillBars: React.FC<SkillBarsProps> = ({ accuracy, consistency, speed }) => {
   return (
-    <div className="w-full bg-gray-900 rounded-xl p-5 border border-gray-800 h-full flex flex-col justify-center">
-      <SkillBar 
-        label="Accuracy" 
-        value={accuracy * 100} 
-        color="bg-emerald-500" 
-        format={(v) => `${Math.round(v)}%`}
-      />
-      <SkillBar 
-        label="Consistency" 
-        value={consistency} 
-        color="bg-blue-500" 
-        format={(v) => `${Math.round(v)}`}
-      />
-      <SkillBar 
-        label="Speed" 
-        value={speed} 
-        max={200} // Assuming 200 is a "full bar" goal for visualization
-        color="bg-purple-500" 
-        format={(v) => `${Math.round(v)} wpm`}
-      />
+    <div className="w-full bg-gray-900 rounded-xl p-6 border border-gray-800 h-full flex flex-col justify-between">
+      {/* Large Numbers Section */}
+      <div className="mb-0">
+        {/* Accuracy */}
+        <div className="flex items-baseline gap-3 mb-4">
+          <p className="text-9xl font-bold text-emerald-500 font-mono">{Math.round(accuracyPercent)}<span className="text-3xl">%</span></p>
+          <p className="text-sm text-gray-500 font-mono">Accuracy</p>
+        </div>
+        
+        {/* Consistency */}
+        <div className="flex items-baseline gap-3 mb-4">
+          <p className="text-9xl font-bold text-blue-500 font-mono">{Math.round(consistency)}</p>
+          <p className="text-sm text-gray-500 font-mono">Consistency</p>
+        </div>
+        
+        {/* Speed */}
+        <div className="flex items-baseline gap-3 mb-4">
+          <p className="text-9xl font-bold text-purple-500 font-mono">{Math.round(speed)}</p>
+          <p className="text-sm text-gray-500 font-mono">WPM</p>
+        </div>
+
+        {rawWpm !== undefined && (
+          <div className="flex items-baseline gap-3">
+            <p className="text-9xl font-bold text-gray-600 font-mono">{Math.round(rawWpm)}</p>
+            <p className="text-xs text-gray-600 font-mono">Raw</p>
+          </div>
+        )}
+      </div>
+
+      {/* Bars Section (No Labels) */}
+      <div className="space-y-4">
+        {/* Accuracy Bar */}
+        <div className="h-2 w-full bg-gray-800 rounded-full overflow-hidden">
+          <div 
+            className="h-full bg-emerald-500 transition-all duration-1000 ease-out" 
+            style={{ width: `${accuracyPercentage}%` }} 
+          />
+        </div>
+        
+        {/* Consistency Bar */}
+        <div className="h-2 w-full bg-gray-800 rounded-full overflow-hidden">
+          <div 
+            className="h-full bg-blue-500 transition-all duration-1000 ease-out" 
+            style={{ width: `${consistencyPercentage}%` }} 
+          />
+        </div>
+        
+        {/* Speed Bar */}
+        <div className="h-2 w-full bg-gray-800 rounded-full overflow-hidden">
+          <div 
+            className="h-full bg-purple-500 transition-all duration-1000 ease-out" 
+            style={{ width: `${speedPercentage}%` }} 
+          />
+        </div>
+      </div>
     </div>
   );
 };

@@ -25,7 +25,6 @@ export interface UserState {
   backspaceRate: number;
   hesitationCount: number;
   recentErrors: string[];
-  currentDifficulty: number;
   recentSnippetIds?: string[];
   keystroke_timestamps?: number[];
 }
@@ -51,9 +50,6 @@ export interface SessionCreateRequest {
   durationSeconds: number;
   wordsTyped: number;
   keystrokeData: KeystrokeEvent[];
-  wpm: number;
-  accuracy: number;
-  errors: number;
   difficultyLevel: number;
   snippets: SnippetResult[];
   user_state: UserState;
@@ -109,30 +105,38 @@ export interface ReplayEvent {
   isRollover?: boolean;
 }
 
-export interface AnalyticsResponse {
+// Merged SessionResponse - combines session metadata with all analytics
+export interface SessionResponse {
+  // Session metadata
+  session_id: string;
+  reward: number;
+  durationSeconds: number;
+  
+  // Basic stats
+  wpm: number;
+  rawWpm: number;
+  accuracy: number;
+  errors: number;
+  
+  // Flow metrics
   smoothness: number;
   rollover: number;
   leftFluency: number;
   rightFluency: number;
   crossFluency: number;
-  speed: number;
-  accuracy: number;
+  
+  // Hand-specific rollover rates
+  rolloverL2L: number;
+  rolloverR2R: number;
+  rolloverCross: number;
+  
+  // Detailed stats
   avgIki: number;
   kspc: number;
-  errors: number;
+  avgChunkLength: number;
   heatmapData: Record<string, { accuracy: number; speed: number }>;
+  
+  // Time Series and Replay
   speedSeries: SpeedPoint[];
   replayEvents: ReplayEvent[];
-  avgChunkLength: number;
-}
-
-// Added SessionResponse interface
-export interface SessionResponse {
-  session_id: string;
-  reward: number;
-  durationSeconds: number;
-  wpm: number;
-  accuracy: number;
-  errors: number;
-  analytics: AnalyticsResponse;
 }

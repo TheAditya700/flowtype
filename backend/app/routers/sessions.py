@@ -4,7 +4,6 @@ from app.database import SessionLocal
 from app.models.schema import (
     SessionCreateRequest,
     SessionResponse,
-    AnalyticsResponse,
     SpeedPoint,
     ReplayEvent,
     SnippetBoundary
@@ -82,10 +81,43 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
             for k in request.keystrokeData
         ]
         
+        # Calculate wpm, accuracy, errors from keystrokeData
+        # Each KeystrokeEvent represents one keystroke (not double-counting keydown/keyup)
+        
+        # Calculate actual duration from keystroke timestamps
+        if request.keystrokeData and len(request.keystrokeData) > 0:
+            sorted_keystrokes = sorted(request.keystrokeData, key=lambda k: k.timestamp)
+            duration_ms = sorted_keystrokes[-1].timestamp - sorted_keystrokes[0].timestamp
+            duration_seconds = duration_ms / 1000.0
+        else:
+            duration_seconds = request.durationSeconds
+        
+        # For WPM: count only correct, non-backspace keystrokes
+        correct_keystrokes = sum(1 for k in request.keystrokeData if k.isCorrect and not k.isBackspace)
+        
+        # For raw WPM: count all non-backspace keystrokes
+        total_non_backspace_keystrokes = sum(1 for k in request.keystrokeData if not k.isBackspace)
+        
+        # For accuracy: total keystrokes (including incorrect ones, but not backspaces)
+        accuracy_denominator = total_non_backspace_keystrokes
+        
+        # Errors: incorrect keystrokes (not backspaces)
+        errors = sum(1 for k in request.keystrokeData if not k.isCorrect and not k.isBackspace)
+        
+        # Calculate WPM: (correct keystrokes / 5) / (duration in minutes)
+        duration_minutes = duration_seconds / 60 if duration_seconds > 0 else 0.001
+        calculated_wpm = (correct_keystrokes / 5) / duration_minutes if duration_minutes > 0 else 0
+        
+        # Calculate Raw WPM: (all non-backspace keystrokes / 5) / (duration in minutes)
+        calculated_raw_wpm = (total_non_backspace_keystrokes / 5) / duration_minutes if duration_minutes > 0 else 0
+        
+        # Calculate Accuracy: (correct keystrokes / total non-backspace keystrokes)
+        calculated_accuracy = (correct_keystrokes / accuracy_denominator) if accuracy_denominator > 0 else 0
+        
         session_data = {
             'keystroke_events': events_dicts,
-            'wpm': request.wpm,
-            'accuracy': request.accuracy,
+            'wpm': calculated_wpm,
+            'accuracy': calculated_accuracy,
             'snippet_difficulty': request.difficultyLevel,
             'completed': True,
             'quit_progress': 1.0
@@ -118,8 +150,8 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
             user.last_active = func.now()
             
             # --- Update Best WPMs ---
-            current_wpm = request.wpm
-            duration = request.durationSeconds
+            current_wpm = calculated_wpm
+            duration = duration_seconds
             
             # Helper to update best if current is better within tolerance window
             # Tolerance: +/- 10% or absolute time window?
@@ -209,12 +241,12 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
         # -----------------------------------------------------
         db_session = TypingSession(
             user_id=request.user_id,
-            duration_seconds=request.durationSeconds,
+            duration_seconds=duration_seconds,
             words_typed=request.wordsTyped,
-            errors=request.errors,
+            errors=errors,
             backspaces=sum(1 for k in request.keystrokeData if k.isBackspace),
-            final_wpm=request.wpm,
-            accuracy=request.accuracy,
+            final_wpm=calculated_wpm,
+            accuracy=calculated_accuracy,
             avg_difficulty=request.difficultyLevel,
             starting_difficulty=request.difficultyLevel,
             ending_difficulty=request.difficultyLevel,
@@ -269,9 +301,24 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
         cv_R2R = get_iki_cv('R2R')
         cv_cross = get_iki_cv('cross')
         
-        # Rollover Rate
+        # Smoothness: Agent-style weighted formula (matching lints_agent.py)
+        # smoothness = 0.5 * (1 / (1 + iki_cv)) + 0.5 * (1 - spike_rate)
+        agent_smoothness_value = 0.5 * (1.0 / (1.0 + cv_global)) + 0.5 * (1.0 - global_spike_rate)
+        # Convert to 0-100 scale for UI
+        smoothness_score = agent_smoothness_value * 100
+        
+        # Rollover Rate (Overall & Per-Hand)
         total_transitions = extractor.iki_stats['global']['count']
         rollover_rate = safe_div(extractor.rollover_count, total_transitions)
+        
+        # Hand-specific rollover rates
+        l2l_transitions = extractor.trans_stats['L2L']['presses']
+        r2r_transitions = extractor.trans_stats['R2R']['presses']
+        cross_transitions = extractor.trans_stats['cross']['presses']
+        
+        rollover_l2l_rate = safe_div(extractor.roll_trans_counts['L2L'], l2l_transitions)
+        rollover_r2r_rate = safe_div(extractor.roll_trans_counts['R2R'], r2r_transitions)
+        rollover_cross_rate = safe_div(extractor.roll_trans_counts['cross'], cross_transitions)
         
         # Avg IKI
         avgIki = safe_div(extractor.iki_stats['global']['sum'], extractor.iki_stats['global']['count'])
@@ -400,31 +447,28 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
                 speed = max(0.0, min(1.0, 1.0 - (avg_key_iki - 50) / 250))
                 heatmap_data[char] = {"accuracy": acc, "speed": speed}
 
-        analytics = AnalyticsResponse(
-            smoothness=cv_to_score(cv_global),
+        return SessionResponse(
+            session_id=str(db_session.id),
+            reward=total_session_reward,
+            durationSeconds=duration_seconds,
+            wpm=calculated_wpm,
+            rawWpm=calculated_raw_wpm,
+            accuracy=calculated_accuracy,
+            errors=errors,
+            smoothness=smoothness_score,
             rollover=rollover_rate * 100.0,
             leftFluency=cv_to_score(cv_L2L),
             rightFluency=cv_to_score(cv_R2R),
             crossFluency=cv_to_score(cv_cross),
-            speed=request.wpm,
-            accuracy=request.accuracy,
+            rolloverL2L=rollover_l2l_rate * 100.0,
+            rolloverR2R=rollover_r2r_rate * 100.0,
+            rolloverCross=rollover_cross_rate * 100.0,
             avgIki=avgIki,
             kspc=kspc,
-            errors=extractor.total_errors,
+            avgChunkLength=avg_chunk_length,
             heatmapData=heatmap_data,
             speedSeries=speed_series,
-            replayEvents=replay_events,
-            avgChunkLength=avg_chunk_length
-        )
-
-        return SessionResponse(
-            session_id=str(db_session.id),
-            reward=total_session_reward,
-            durationSeconds=request.durationSeconds,
-            wpm=request.wpm,
-            accuracy=request.accuracy,
-            errors=request.errors,
-            analytics=analytics
+            replayEvents=replay_events
         )
 
     except Exception as e:
