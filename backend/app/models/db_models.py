@@ -58,7 +58,6 @@ class Snippet(Base):
     )
 
 
-
 # -----------------------------------------
 # Typing Session
 # -----------------------------------------
@@ -67,63 +66,34 @@ class TypingSession(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(String, nullable=True, index=True)
-
+    
+    # Session metadata
     duration_seconds = Column(Float)
-    words_typed = Column(Integer)
+    created_at = Column(DateTime, server_default=func.now())
+    
+    # User state at session time
+    user_embedding = Column(JSON, nullable=True)  # 130-dim user state vector
+    
+    # Snippets typed (list of snippet IDs in order)
+    snippet_ids = Column(JSON, nullable=False, default=[])  # ["id1", "id2", ...]
+    snippet_embeddings = Column(JSON, nullable=True)  # List of 16-dim embeddings
+    
+    # Keystroke data (full list of keystroke events)
+    keystroke_events = Column(JSON, nullable=False, default=[])
+    
+    # Actual performance metrics
+    actual_wpm = Column(Float)
+    actual_accuracy = Column(Float)
+    actual_consistency = Column(Float)  # smoothness score
+    
+    # Predicted metrics (from LinTS agent at session start)
+    predicted_wpm = Column(Float, nullable=True)
+    predicted_accuracy = Column(Float, nullable=True)
+    predicted_consistency = Column(Float, nullable=True)
+    
+    # Additional stats
     errors = Column(Integer)
-    backspaces = Column(Integer)
-
-    final_wpm = Column(Float)
-    accuracy = Column(Float)
-
-    starting_difficulty = Column(Float)
-    ending_difficulty = Column(Float)
-    avg_difficulty = Column(Float)
-
-    flow_score = Column(Float)
-
-    # RL reward
+    raw_wpm = Column(Float)
+    
+    # RL reward (for agent updates)
     reward = Column(Float, nullable=True)
-
-    created_at = Column(DateTime, server_default=func.now())
-
-    # relationships
-    keystrokes = relationship("KeystrokeEventDB", back_populates="session")
-    snippet_usages = relationship("SnippetUsage", back_populates="session")
-
-
-# -----------------------------------------
-# Per-Keystroke Storage (for GRU training)
-# -----------------------------------------
-class KeystrokeEventDB(Base):
-    __tablename__ = "keystroke_events"
-
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    session_id = Column(String, ForeignKey("typing_sessions.id"))
-    timestamp = Column(BigInteger)
-    key = Column(String)
-    is_backspace = Column(Boolean)
-    is_correct = Column(Boolean)
-
-    session = relationship("TypingSession", back_populates="keystrokes")
-
-
-# -----------------------------------------
-# Per-Snippet Usage Metadata (for ranking/RL)
-# -----------------------------------------
-class SnippetUsage(Base):
-    __tablename__ = "snippet_usage"
-
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    session_id = Column(String, ForeignKey("typing_sessions.id"), index=True)
-    snippet_id = Column(String, index=True)
-
-    user_wpm = Column(Float)
-    user_accuracy = Column(Float)
-    snippet_position = Column(Integer)
-
-    difficulty_snapshot = Column(Float)
-
-    created_at = Column(DateTime, server_default=func.now())
-
-    session = relationship("TypingSession", back_populates="snippet_usages")

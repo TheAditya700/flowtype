@@ -55,6 +55,9 @@ class SnippetResult(BaseModel):
     difficulty: float
     started_at: Optional[int] = None
     completed_at: Optional[int] = None
+    is_partial: Optional[bool] = False
+    completed_words: Optional[int] = None
+    total_words: Optional[int] = None
 
 
 # ------------------------------------------------------
@@ -73,6 +76,11 @@ class SessionCreateRequest(BaseModel):
     # User tower state at session start
     user_state: UserState
     flowScore: Optional[float] = 0.0
+    
+    # Predicted metrics from LinTS agent
+    predicted_wpm: Optional[float] = None
+    predicted_accuracy: Optional[float] = None
+    predicted_consistency: Optional[float] = None
 
 
 # ------------------------------------------------------
@@ -135,6 +143,9 @@ class SessionResponse(BaseModel):
     # Time Series and Replay
     speedSeries: List[SpeedPoint]
     replayEvents: List[ReplayEvent]
+    
+    # Snippet results
+    snippets: List[SnippetResult] = []
 
 
 # ------------------------------------------------------
@@ -147,6 +158,9 @@ class SnippetRetrieveRequest(BaseModel):
 class SnippetResponse(BaseModel):
     snippet: Optional[dict]
     wpm_windows: dict
+    predicted_wpm: Optional[float] = None
+    predicted_accuracy: Optional[float] = None
+    predicted_consistency: Optional[float] = None
 
 # ------------------------------------------------------
 # User Stats (simple reporting)

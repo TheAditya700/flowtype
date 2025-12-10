@@ -88,17 +88,14 @@ export async function fetchCurrentUser(): Promise<UserResponse> {
 
 
 // Existing API Calls, updated to use callApi
-export async function fetchNextSnippet(userState: UserState, currentSnippetId?: string): Promise<SnippetResponse | null> {
+export async function fetchNextSnippet(userState: UserState, currentSnippetId?: string): Promise<SnippetRetrieveResponse | null> {
   const response = await callApi<SnippetRetrieveResponse>(
     '/snippets/retrieve',
     'POST',
     { user_state: userState, current_snippet_id: currentSnippetId }
   );
   
-  if (response && response.snippet) {
-    return response.snippet;
-  }
-  return null;
+  return response;
 }
 
 export async function saveSession(session: SessionCreateRequest): Promise<SessionResponse> {

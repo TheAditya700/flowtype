@@ -1,6 +1,6 @@
 import asyncio
 from app.database import engine, Base
-from app.models.db_models import User, Snippet, TypingSession, SnippetUsage
+from app.models.db_models import User, Snippet, TypingSession
 
 async def init_models():
     async with engine.begin() as conn:

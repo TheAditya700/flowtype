@@ -7,6 +7,9 @@ export interface SnippetResponse {
 export interface SnippetRetrieveResponse {
   snippet: SnippetResponse;
   wpm_windows: Record<string, number>;
+  predicted_wpm?: number;
+  predicted_accuracy?: number;
+  predicted_consistency?: number;
 }
 
 export interface KeystrokeEvent {
@@ -43,6 +46,9 @@ export interface SnippetResult {
   difficulty: number;
   started_at?: number;
   completed_at?: number;
+  is_partial?: boolean;
+  completed_words?: number;
+  total_words?: number;
 }
 
 export interface SessionCreateRequest {
@@ -54,6 +60,9 @@ export interface SessionCreateRequest {
   snippets: SnippetResult[];
   user_state: UserState;
   flowScore?: number;
+  predicted_wpm?: number;
+  predicted_accuracy?: number;
+  predicted_consistency?: number;
 }
 
 export interface SnippetLog {
@@ -63,6 +72,9 @@ export interface SnippetLog {
   wpm: number;
   accuracy: number;
   difficulty: number;
+  isPartial?: boolean;
+  completedWords?: number;
+  totalWords?: number;
 }
 
 export interface UserStats {
@@ -139,4 +151,7 @@ export interface SessionResponse {
   // Time Series and Replay
   speedSeries: SpeedPoint[];
   replayEvents: ReplayEvent[];
+  
+  // Snippet results
+  snippets?: SnippetResult[];
 }

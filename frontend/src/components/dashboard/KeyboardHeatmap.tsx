@@ -18,10 +18,16 @@ const ROWS = [
 
 const KeyboardHeatmap: React.FC<KeyboardHeatmapProps> = ({ charStats }) => {
   const [mode, setMode] = useState<'accuracy' | 'speed'>('accuracy');
+  
+  // Debug: log charStats to see what's inside
+  console.log('KeyboardHeatmap charStats:', charStats);
 
   const getColor = (char: string) => {
     const stats = charStats[char];
     if (!stats) return 'bg-gray-800 text-gray-700 border-gray-800';
+    
+    // Debug: log individual character stats
+    console.log(`Stats for '${char}':`, stats);
 
     const val = mode === 'accuracy' ? stats.accuracy : stats.speed;
     

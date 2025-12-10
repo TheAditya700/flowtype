@@ -8,7 +8,7 @@ from app.models.schema import (
     ReplayEvent,
     SnippetBoundary
 )
-from app.models.db_models import TypingSession, SnippetUsage, KeystrokeEventDB, User, Snippet
+from app.models.db_models import TypingSession, User, Snippet
 from app.ml.user_features import UserFeatureExtractor
 from app.ml.feature_aggregator import update_long_term_features
 from app.ml.lints_agent import agent
@@ -41,6 +41,10 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
       - Returns detailed analytics
     """
     try:
+        logger.info(f"Received {len(request.snippets)} snippets in session")
+        for idx, snippet in enumerate(request.snippets):
+            logger.info(f"Snippet {idx}: {snippet.snippet_id}, partial={snippet.is_partial}, completed_words={snippet.completed_words}/{snippet.total_words}")
+        
         # -----------------------------------------------------
         # 1. Setup User & Extractor
         # -----------------------------------------------------
@@ -84,13 +88,10 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
         # Calculate wpm, accuracy, errors from keystrokeData
         # Each KeystrokeEvent represents one keystroke (not double-counting keydown/keyup)
         
-        # Calculate actual duration from keystroke timestamps
-        if request.keystrokeData and len(request.keystrokeData) > 0:
-            sorted_keystrokes = sorted(request.keystrokeData, key=lambda k: k.timestamp)
-            duration_ms = sorted_keystrokes[-1].timestamp - sorted_keystrokes[0].timestamp
-            duration_seconds = duration_ms / 1000.0
-        else:
-            duration_seconds = request.durationSeconds
+        # Use provided duration (for timed modes) or calculate from keystroke timestamps
+        # Timed modes send the actual session duration (15s, 30s, etc.)
+        # Free mode sends duration calculated from keystrokes
+        duration_seconds = request.durationSeconds
         
         # For WPM: count only correct, non-backspace keystrokes
         correct_keystrokes = sum(1 for k in request.keystrokeData if k.isCorrect and not k.isBackspace)
@@ -237,59 +238,57 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
         agent.save()
 
         # -----------------------------------------------------
-        # 3. Save Session to DB
+        # 3. Calculate Smoothness Score (needed for DB save)
         # -----------------------------------------------------
+        # Smoothness: Agent-style weighted formula (matching lints_agent.py)
+        # smoothness = 0.5 * (1 / (1 + iki_cv)) + 0.5 * (1 - spike_rate)
+        agent_smoothness_value = 0.5 * (1.0 / (1.0 + global_iki_cv)) + 0.5 * (1.0 - global_spike_rate)
+        # Convert to 0-100 scale for UI and ensure it's a Python float
+        smoothness_score = float(agent_smoothness_value * 100)
+
+        # -----------------------------------------------------
+        # 4. Save Session to DB
+        # -----------------------------------------------------
+        # Extract snippet IDs and embeddings
+        snippet_ids = [s.snippet_id for s in request.snippets]
+        snippet_embeddings = []
+        for sid in snippet_ids:
+            snippet = snippet_map.get(sid)
+            if snippet and snippet.processed_embedding:
+                snippet_embeddings.append(snippet.processed_embedding)
+            else:
+                snippet_embeddings.append(None)
+        
+        # Get user embedding (130-dim state vector)
+        user_embedding_vec = None
+        if user_ema_vector:  # This is the EMA mean vector from earlier
+            user_embedding_vec = user_ema_vector  # Already constructed as [ema | std | prev_snippet]
+        
         db_session = TypingSession(
             user_id=request.user_id,
-            duration_seconds=duration_seconds,
-            words_typed=request.wordsTyped,
-            errors=errors,
-            backspaces=sum(1 for k in request.keystrokeData if k.isBackspace),
-            final_wpm=calculated_wpm,
-            accuracy=calculated_accuracy,
-            avg_difficulty=request.difficultyLevel,
-            starting_difficulty=request.difficultyLevel,
-            ending_difficulty=request.difficultyLevel,
-            flow_score=request.flowScore,
-            reward=total_session_reward,
+            duration_seconds=float(duration_seconds),
+            created_at=func.now(),
+            user_embedding=user_embedding_vec,
+            snippet_ids=snippet_ids,
+            snippet_embeddings=snippet_embeddings,
+            keystroke_events=events_dicts,
+            actual_wpm=float(calculated_wpm),
+            actual_accuracy=float(calculated_accuracy),
+            actual_consistency=float(smoothness_score),
+            predicted_wpm=float(request.predicted_wpm) if request.predicted_wpm is not None else None,
+            predicted_accuracy=float(request.predicted_accuracy) if request.predicted_accuracy is not None else None,
+            predicted_consistency=float(request.predicted_consistency) if request.predicted_consistency is not None else None,
+            errors=int(errors),
+            raw_wpm=float(calculated_raw_wpm),
+            reward=float(total_session_reward),
         )
         db.add(db_session)
-        db.flush()
-
-        # Save Keystrokes
-        kevent_objs = [
-            KeystrokeEventDB(
-                session_id=db_session.id,
-                timestamp=e.timestamp,
-                key=e.key,
-                is_backspace=e.isBackspace,
-                is_correct=e.isCorrect,
-            )
-            for e in request.keystrokeData
-        ]
-        db.add_all(kevent_objs)
-
-        # Save SnippetUsage
-        usage_objs = []
-        for idx, s in enumerate(request.snippets):
-            usage_objs.append(
-                SnippetUsage(
-                    id=str(uuid.uuid4()),
-                    session_id=db_session.id,
-                    snippet_id=s.snippet_id,
-                    user_wpm=s.wpm,
-                    user_accuracy=s.accuracy,
-                    snippet_position=idx,
-                    difficulty_snapshot=s.difficulty,
-                )
-            )
-        db.add_all(usage_objs)
 
         db.commit()
         db.refresh(db_session)
 
         # -----------------------------------------------------
-        # 4. Generate Detailed Analytics (Response)
+        # 5. Generate Detailed Analytics (Response)
         # -----------------------------------------------------
         
         # Helpers for Analytics
@@ -300,12 +299,6 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
         cv_L2L = get_iki_cv('L2L')
         cv_R2R = get_iki_cv('R2R')
         cv_cross = get_iki_cv('cross')
-        
-        # Smoothness: Agent-style weighted formula (matching lints_agent.py)
-        # smoothness = 0.5 * (1 / (1 + iki_cv)) + 0.5 * (1 - spike_rate)
-        agent_smoothness_value = 0.5 * (1.0 / (1.0 + cv_global)) + 0.5 * (1.0 - global_spike_rate)
-        # Convert to 0-100 scale for UI
-        smoothness_score = agent_smoothness_value * 100
         
         # Rollover Rate (Overall & Per-Hand)
         total_transitions = extractor.iki_stats['global']['count']
@@ -425,7 +418,19 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
         chunk_starts = sum(1 for e in replay_events if e.isChunkStart)
         avg_chunk_length = len(replay_events) / (1 + chunk_starts) if replay_events else 0.0
 
-        # Heatmap IKI
+        # Build heatmap data from CURRENT SESSION only
+        session_char_stats = {}  # Character stats for this session only
+        for event in request.keystrokeData:
+            if event.isBackspace:
+                continue
+            char = event.key.lower()
+            if char not in session_char_stats:
+                session_char_stats[char] = {'presses': 0, 'errors': 0}
+            session_char_stats[char]['presses'] += 1
+            if not event.isCorrect:
+                session_char_stats[char]['errors'] += 1
+        
+        # Heatmap IKI - calculate per-character inter-keystroke intervals
         for i in range(1, len(sorted_events)):
             curr = sorted_events[i]
             prev = sorted_events[i-1]
@@ -438,13 +443,14 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
                 char_iki_stats[char]['count'] += 1
                 
         heatmap_data = {}
-        for char, stats in extractor.char_stats.items():
+        for char, stats in session_char_stats.items():
             if stats['presses'] > 0:
                 acc = 1.0 - (stats['errors'] / stats['presses'])
                 avg_key_iki = 0
+                speed = 1.0  # Default to 1.0 if no IKI data
                 if char in char_iki_stats and char_iki_stats[char]['count'] > 0:
                     avg_key_iki = char_iki_stats[char]['sum'] / char_iki_stats[char]['count']
-                speed = max(0.0, min(1.0, 1.0 - (avg_key_iki - 50) / 250))
+                    speed = max(0.0, min(1.0, 1.0 - (avg_key_iki - 50) / 250))
                 heatmap_data[char] = {"accuracy": acc, "speed": speed}
 
         return SessionResponse(
@@ -468,7 +474,8 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
             avgChunkLength=avg_chunk_length,
             heatmapData=heatmap_data,
             speedSeries=speed_series,
-            replayEvents=replay_events
+            replayEvents=replay_events,
+            snippets=request.snippets
         )
 
     except Exception as e:

@@ -36,6 +36,10 @@ function App() {
   const [snippetLogs, setSnippetLogs] = useState<SnippetLog[]>([]);
   const [allKeystrokes, setAllKeystrokes] = useState<KeystrokeEvent[]>([]);
   
+  // Ref to track pending partial snippet (for timer expiration)
+  const pendingPartialSnippet = useRef<SnippetLog | null>(null);
+  const pendingKeystrokes = useRef<KeystrokeEvent[]>([]);
+  
   // State to hold the full session response from the backend
   const [sessionResultData, setSessionResultData] = useState<SessionResponse | null>(null);
 
@@ -51,6 +55,12 @@ function App() {
   });
 
   const [liveStats, setLiveStats] = useState({ wpm: 0, accuracy: 100, time: 0, timeRemaining: null as number | null, sessionMode: 'free' as '15' | '30' | '60' | '120' | 'free', sessionStarted: false });
+
+  const [predictedMetrics, setPredictedMetrics] = useState<{
+    predicted_wpm?: number;
+    predicted_accuracy?: number;
+    predicted_consistency?: number;
+  }>({});
 
   const handleStatsUpdate = useCallback((stats: { wpm: number; accuracy: number; time: number; timeRemaining: number | null; sessionMode: '15' | '30' | '60' | '120' | 'free'; sessionStarted: boolean }) => {
     setLiveStats({ wpm: stats.wpm, accuracy: stats.accuracy, time: stats.time, timeRemaining: stats.timeRemaining, sessionMode: stats.sessionMode, sessionStarted: stats.sessionStarted });
@@ -86,13 +96,23 @@ function App() {
         const stateWithRecent = { ...state, recentSnippetIds: excludeIds };
         
         const currentId = snippetQueue.length > 0 ? snippetQueue[0]?.id : undefined;
-        const snippet = await fetchNextSnippet(stateWithRecent, currentId);
-        if (!snippet) {
+        const response = await fetchNextSnippet(stateWithRecent, currentId);
+        if (!response || !response.snippet) {
           break; 
         }
-        setSnippetQueue(prev => [...prev, snippet]);
-        if (snippet.id) {
-            fetchedInBatch.push(snippet.id);
+        
+        // Store predicted metrics from first fetch (for session start predictions)
+        if (i === 0 && response.predicted_wpm !== undefined) {
+          setPredictedMetrics({
+            predicted_wpm: response.predicted_wpm,
+            predicted_accuracy: response.predicted_accuracy,
+            predicted_consistency: response.predicted_consistency
+          });
+        }
+        
+        setSnippetQueue(prev => [...prev, response.snippet]);
+        if (response.snippet.id) {
+            fetchedInBatch.push(response.snippet.id);
         }
       }
     } catch (error) {
@@ -115,7 +135,10 @@ function App() {
   }, [snippetQueue.length, authLoading, userState.user_id]);
 
   const handleSnippetComplete = async (stats: { // Made async
-    keystrokeEvents: KeystrokeEvent[]; 
+    keystrokeEvents: KeystrokeEvent[];
+    isPartial?: boolean;
+    completedWords?: number;
+    totalWords?: number;
   }) => {
     const currentSnippet = snippetQueue[0];
     if (!currentSnippet) return;
@@ -129,12 +152,21 @@ function App() {
         completed_at: new Date(stats.keystrokeEvents[stats.keystrokeEvents.length - 1]?.timestamp || Date.now()).toISOString(),
         wpm: 0, // Will be calculated in backend
         accuracy: 0, // Will be calculated in backend
-        difficulty: safeDifficulty
+        difficulty: safeDifficulty,
+        isPartial: stats.isPartial,
+        completedWords: stats.completedWords,
+        totalWords: stats.totalWords
     };
 
     setSnippetLogs(prev => [...prev, log]);
     const updatedAllKeystrokes = [...allKeystrokes, ...stats.keystrokeEvents];
     setAllKeystrokes(updatedAllKeystrokes);
+    
+    // If this is a partial snippet, store it in ref for immediate access
+    if (stats.isPartial) {
+      pendingPartialSnippet.current = log;
+      pendingKeystrokes.current = updatedAllKeystrokes;
+    }
     
     // Calculate stats from all keystrokes for display purposes only
     const correctKeystrokes = updatedAllKeystrokes.filter(k => k.isCorrect && !k.isBackspace).length;
@@ -183,38 +215,65 @@ function App() {
 
   const handlePause = async () => {
       // User pressed Enter - end session and save to backend
-      if (allKeystrokes.length === 0) return; // No keystrokes to save
+      
+      // Use pending keystrokes if available (for partial snippet case), otherwise use state
+      const keystrokesToSave = pendingKeystrokes.current.length > 0 ? pendingKeystrokes.current : allKeystrokes;
+      
+      if (keystrokesToSave.length === 0) return; // No keystrokes to save
 
-      const sortedKeystrokes = [...allKeystrokes].sort((a, b) => a.timestamp - b.timestamp);
+      const sortedKeystrokes = [...keystrokesToSave].sort((a, b) => a.timestamp - b.timestamp);
       const duration_ms = sortedKeystrokes[sortedKeystrokes.length - 1].timestamp - sortedKeystrokes[0].timestamp;
-      const duration_seconds = duration_ms / 1000;
+      
+      // For timed modes, use the actual session duration (e.g., 15s, 30s, etc.)
+      // For free mode, use the calculated duration from keystrokes
+      let duration_seconds = duration_ms / 1000;
+      if (liveStats.sessionMode !== 'free') {
+        duration_seconds = parseInt(liveStats.sessionMode);
+      }
 
-      // Build snippet results from logs
-      const snippetResults: SnippetResult[] = snippetLogs.map(log => ({
+      // Build snippet results from logs, including any pending partial snippet
+      const allLogs = pendingPartialSnippet.current 
+        ? [...snippetLogs, pendingPartialSnippet.current]
+        : snippetLogs;
+      
+      const snippetResults: SnippetResult[] = allLogs.map(log => ({
         snippet_id: log.snippet_id,
         wpm: 0, // Backend will recalculate
         accuracy: 0, // Backend will recalculate
         difficulty: log.difficulty,
         started_at: new Date(log.started_at).getTime(),
-        completed_at: new Date(log.completed_at).getTime()
+        completed_at: new Date(log.completed_at).getTime(),
+        is_partial: log.isPartial,
+        completed_words: log.completedWords,
+        total_words: log.totalWords
       }));
 
       const sessionPayload: SessionCreateRequest = {
           user_id: userState.user_id,
           durationSeconds: duration_seconds,
           wordsTyped: sessionSummary.totalWords,
-          keystrokeData: allKeystrokes,
-          difficultyLevel: snippetLogs.length > 0 ? snippetLogs[0].difficulty : 5.0,
+          keystrokeData: keystrokesToSave,
+          difficultyLevel: allLogs.length > 0 ? allLogs[0].difficulty : 5.0,
           snippets: snippetResults,
           user_state: userState, 
-          flowScore: 0.0 
+          flowScore: 0.0,
+          predicted_wpm: predictedMetrics.predicted_wpm,
+          predicted_accuracy: predictedMetrics.predicted_accuracy,
+          predicted_consistency: predictedMetrics.predicted_consistency
       };
 
       try {
           const response = await saveSession(sessionPayload);
+          console.log('Session saved successfully:', response);
           setSessionResultData(response); // Store the full response - this triggers dashboard view
       } catch (err) {
           console.error("Failed to save session:", err);
+          // Still show dashboard even if save fails (using local data)
+          alert('Failed to save session to server. Showing local results.');
+      } finally {
+          // Clear pending partial snippet and keystrokes after session save
+          pendingPartialSnippet.current = null;
+          pendingKeystrokes.current = [];
       }
   };
 

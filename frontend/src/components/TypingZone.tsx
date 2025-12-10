@@ -12,6 +12,9 @@ interface SnippetItem {
 
 interface SnippetStats {
   keystrokeEvents: KeystrokeEvent[];
+  isPartial?: boolean;
+  completedWords?: number;
+  totalWords?: number;
 }
 
 interface TypingZoneProps {
@@ -27,6 +30,8 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
   const [errors, setErrors] = useState(0);
   const [sessionStarted, setSessionStarted] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
+  const sessionStartTimeRef = useRef<number | null>(null);
+  const timerDurationRef = useRef<number | null>(null);
   
   // Session Mode Hook
   const { sessionMode } = useSessionMode();
@@ -66,31 +71,62 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
 
   // Timed session setup
   useEffect(() => {
-    if (sessionMode !== 'free' && sessionStarted) {
+    if (sessionMode !== 'free' && sessionStarted && !sessionStartTimeRef.current) {
       const durationMs = parseInt(sessionMode) * 1000;
+      timerDurationRef.current = durationMs;
+      sessionStartTimeRef.current = Date.now();
       setTimeRemaining(durationMs);
     }
   }, [sessionMode, sessionStarted]);
 
-  // Countdown timer
+  // Countdown timer - calculate from real elapsed time
   useEffect(() => {
-    if (timeRemaining === null || timeRemaining <= 0) return;
+    if (!sessionStartTimeRef.current || !timerDurationRef.current) return;
 
     const interval = setInterval(() => {
-      setTimeRemaining(prev => {
-        if (!prev) return prev;
-        const next = prev - 100;
-        if (next <= 0) {
-          // Auto-end session when time hits 0
+      const elapsed = Date.now() - sessionStartTimeRef.current!;
+      const remaining = timerDurationRef.current! - elapsed;
+      
+      if (remaining <= 0) {
+        setTimeRemaining(0);
+        clearInterval(interval);
+        
+        // Send partial snippet if we're in the middle of one
+        if (sessionStarted && (typedHistory.length > 0 || currentTyped.length > 0)) {
+          const snippetEvents = keystrokeEvents.slice(snippetEventOffset.current);
+          snippetEventOffset.current = keystrokeEvents.length;
+          
+          // Wait for snippet completion to process before pausing
+          Promise.resolve(onSnippetComplete({
+            keystrokeEvents: snippetEvents,
+            isPartial: true,
+            completedWords: typedHistory.length,
+            totalWords: words.length
+          })).then(() => {
+            onRequestPause();
+          });
+        } else {
+          // No partial snippet, pause immediately
           onRequestPause();
-          return 0;
         }
-        return next;
-      });
-    }, 100);
+      } else {
+        setTimeRemaining(remaining);
+      }
+    }, 50); // Update every 50ms for smooth countdown
 
     return () => clearInterval(interval);
-  }, [timeRemaining, onRequestPause]);
+  }, [sessionStarted, onRequestPause, onSnippetComplete]);
+
+  // Reset timer refs only when component unmounts (not on snippet change in timed mode)
+  useEffect(() => {
+    return () => {
+      // Only reset if we're not in a timed session
+      if (sessionMode === 'free') {
+        sessionStartTimeRef.current = null;
+        timerDurationRef.current = null;
+      }
+    };
+  }, [sessionMode]);
 
 
   // If there's no snippet, don't execute any further logic or render
@@ -188,7 +224,24 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
     if (e.key === 'Enter') {
       e.preventDefault();
       if (sessionMode === 'free' && sessionStarted) {
-        onRequestPause(); // Notify parent to switch view
+        // Check if we're in the middle of a snippet
+        if (typedHistory.length > 0 || currentTyped.length > 0) {
+          const snippetEvents = keystrokeEvents.slice(snippetEventOffset.current);
+          snippetEventOffset.current = keystrokeEvents.length;
+          
+          // Send partial snippet before pausing
+          Promise.resolve(onSnippetComplete({
+            keystrokeEvents: snippetEvents,
+            isPartial: true,
+            completedWords: typedHistory.length,
+            totalWords: words.length
+          })).then(() => {
+            onRequestPause();
+          });
+        } else {
+          // No partial snippet, pause immediately
+          onRequestPause();
+        }
       }
       return;
     }
@@ -259,7 +312,10 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
         snippetEventOffset.current = keystrokeEvents.length;
 
         onSnippetComplete({
-          keystrokeEvents: snippetEvents
+          keystrokeEvents: snippetEvents,
+          isPartial: false,
+          completedWords: words.length,
+          totalWords: words.length
         });
         
         // Reset for next snippet but keep session running
