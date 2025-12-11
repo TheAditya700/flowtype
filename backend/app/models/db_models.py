@@ -10,11 +10,15 @@ from sqlalchemy.orm import relationship
 class User(Base):
     __tablename__ = "users"
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    username = Column(String, unique=True, index=True, nullable=True) # Making nullable for now to support anonymous if needed, will make not null later after user migration
-    hashed_password = Column(String, nullable=True) # Making nullable for now
+    username = Column(String, unique=True, index=True, nullable=True) # Nullable to support anonymous users
+    hashed_password = Column(String, nullable=True) # Nullable for anonymous users
     created_at = Column(DateTime, default=func.now())
     last_active = Column(DateTime, default=func.now(), onupdate=func.now())
 
+    # Anonymous user tracking
+    is_anonymous = Column(Boolean, default=True)  # True if user hasn't registered yet
+    merged_into = Column(String(36), nullable=True)  # ID of authenticated user this profile was merged into
+    
     # Best WPM stats for various intervals (JSON: {"15": wpm, "30": wpm, ...})
     best_wpms = Column(JSON, default={"15": 0.0, "30": 0.0, "60": 0.0, "120": 0.0})
 

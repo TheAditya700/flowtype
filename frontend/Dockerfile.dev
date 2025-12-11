@@ -1,4 +1,6 @@
-# Development Dockerfile for frontend with hot reload
+# ---------------------------------------------------
+# Development Dockerfile for frontend with hot reload (v0.3.0 MVP)
+# ---------------------------------------------------
 FROM node:20-alpine
 
 WORKDIR /app
@@ -6,13 +8,12 @@ WORKDIR /app
 # Copy package files
 COPY package.json package-lock.json ./
 
-# Install dependencies
-RUN npm ci
+# Install dependencies with offline cache
+RUN npm ci --prefer-offline --no-audit
 
-# Copy source (will be mounted via volume in docker-compose for hot reload)
-# COPY . .
+# Note: Source code mounted via volume in docker-compose for live reloading
 
 EXPOSE 5173
 
-# Run dev server with host 0.0.0.0 to allow external access from docker-compose network
+# Run dev server with host 0.0.0.0 to allow external access
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

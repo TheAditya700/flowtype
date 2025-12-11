@@ -1,26 +1,25 @@
 # ---------------------------------------------------
-# Training / Offline Dockerfile (CPU Optimization)
+# Training / Data Prep Dockerfile (v0.3.0 MVP)
 # ---------------------------------------------------
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install Python and system dependencies
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
-    git \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Upgrade pip
+# Upgrade pip for better wheel support
 RUN pip install --upgrade pip setuptools wheel
 
 # 1. Install Base Dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 2. Install ML Dependencies
+# 2. Install ML Dependencies (FAISS, NumPy, wordfreq)
 COPY requirements-ml.txt .
 RUN pip install --no-cache-dir -r requirements-ml.txt
 
@@ -28,7 +27,8 @@ RUN pip install --no-cache-dir -r requirements-ml.txt
 COPY . .
 
 # Setup
-RUN mkdir -p data models
+RUN mkdir -p data
 ENV PYTHONPATH=/app
 
+# Keep container alive for manual script execution
 CMD ["/bin/bash"]

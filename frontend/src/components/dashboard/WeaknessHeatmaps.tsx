@@ -6,7 +6,6 @@ interface WeaknessHeatmapsProps {
   keystrokeEvents: KeystrokeEvent[];
 }
 
-// Placeholder for BigramHeatmap
 const BigramHeatmap: React.FC<WeaknessHeatmapsProps> = ({ keystrokeEvents }) => {
     const bigramStats = useMemo(() => {
         const stats: Record<string, { total: number; errors: number }> = {};

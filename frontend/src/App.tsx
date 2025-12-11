@@ -2,11 +2,13 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import TypingZone from './components/TypingZone';
 import { fetchNextSnippet, saveSession } from './api/client';
 import { UserState, SnippetLog, KeystrokeEvent, SessionCreateRequest, SnippetResult, SessionResponse } from './types'; // Import SessionResponse
-import { v4 as uuidv4 } from 'uuid'; 
+import { v4 as uuidv4 } from 'uuid';
+import { getUserId } from './utils/anonymousUser'; 
 
 import TypingZoneStatsDisplay from './components/TypingZoneStatsDisplay';
 import { useTheme } from './context/ThemeContext';
 import { useAuth } from './context/AuthContext';
+import { useSessionMode } from './context/SessionModeContext';
 
 import Header from './components/Header';
 import ResultsDashboard from './components/dashboard/ResultsDashboard';
@@ -25,7 +27,7 @@ function App() {
   const [recentSnippetIds, setRecentSnippetIds] = useState<string[]>([]);
   const [userState, setUserState] = useState<UserState>(() => {
     return {
-      user_id: undefined,
+      user_id: getUserId(), // Use anonymous or authenticated user ID from localStorage
       rollingWpm: 0,
       rollingAccuracy: 1,
       backspaceRate: 0,
@@ -54,7 +56,10 @@ function App() {
     totalWords: 0
   });
 
+  const { sessionStarted, setSessionStarted, isPaused, setIsPaused, sessionMode, setSessionMode } = useSessionMode();
+
   const [liveStats, setLiveStats] = useState({ wpm: 0, accuracy: 100, time: 0, timeRemaining: null as number | null, sessionMode: 'free' as '15' | '30' | '60' | '120' | 'free', sessionStarted: false });
+  const [isAfk, setIsAfk] = useState(false);
 
   const [predictedMetrics, setPredictedMetrics] = useState<{
     predicted_wpm?: number;
@@ -64,23 +69,23 @@ function App() {
 
   const handleStatsUpdate = useCallback((stats: { wpm: number; accuracy: number; time: number; timeRemaining: number | null; sessionMode: '15' | '30' | '60' | '120' | 'free'; sessionStarted: boolean }) => {
     setLiveStats({ wpm: stats.wpm, accuracy: stats.accuracy, time: stats.time, timeRemaining: stats.timeRemaining, sessionMode: stats.sessionMode, sessionStarted: stats.sessionStarted });
-  }, []);
+    setSessionMode(stats.sessionMode as any);
+    setSessionStarted(stats.sessionStarted);
+  }, [setSessionMode, setSessionStarted]);
+
+  const handleAfkDetected = useCallback(() => {
+    setIsAfk(true);
+    setSessionStarted(false);
+    setIsPaused(true);
+  }, [setIsPaused, setSessionStarted]);
 
   const isFetching = useRef(false);
 
   useEffect(() => {
     if (!authLoading) {
-      if (isAuthenticated && user?.id) {
-        setUserState(prev => ({ ...prev, user_id: user.id }));
-        localStorage.removeItem('flowtype_anonymous_user_id');
-      } else {
-        let anonymousUserId = localStorage.getItem('flowtype_anonymous_user_id');
-        if (!anonymousUserId) {
-          anonymousUserId = uuidv4();
-          localStorage.setItem('flowtype_anonymous_user_id', anonymousUserId);
-        }
-        setUserState(prev => ({ ...prev, user_id: anonymousUserId }));
-      }
+      // Always use getUserId() which returns either authenticated user ID or anonymous ID
+      const currentUserId = getUserId();
+      setUserState(prev => ({ ...prev, user_id: currentUserId }));
     }
   }, [isAuthenticated, user?.id, authLoading]);
 
@@ -256,7 +261,7 @@ function App() {
           difficultyLevel: allLogs.length > 0 ? allLogs[0].difficulty : 5.0,
           snippets: snippetResults,
           user_state: userState, 
-          flowScore: 0.0,
+            sessionMode: liveStats.sessionMode,
           predicted_wpm: predictedMetrics.predicted_wpm,
           predicted_accuracy: predictedMetrics.predicted_accuracy,
           predicted_consistency: predictedMetrics.predicted_consistency
@@ -307,22 +312,50 @@ function App() {
     fetchMoreSnippets(userState, 2);
   };
 
+  const handleRestart = () => {
+    setIsAfk(false);
+    resetSession();
+    pendingPartialSnippet.current = null;
+    pendingKeystrokes.current = [];
+    setSnippetLogs([]);
+    setAllKeystrokes([]);
+    setSessionResultData(null);
+    setSnippetQueue([]);
+    setRecentSnippetIds([]);
+    setSessionStarted(false);
+    setIsPaused(true);
+    fetchMoreSnippets(userState, 2);
+  };
+
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-bg text-text flex items-center justify-center">
+      <div className="flex items-center justify-center py-20">
         <div className="text-xl font-mono animate-pulse">Loading FlowType...</div>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-bg text-text flex flex-col p-8 relative font-mono transition-colors duration-300 overflow-hidden">
-      
-      {/* Header Component (Top Right Controls) */}
-      <Header isPaused={!!sessionResultData} sessionStarted={liveStats.sessionStarted} />
+  if (isAfk) {
+    return (
+      <div className="fixed inset-0 bg-bg text-text flex items-center justify-center p-6 font-mono">
+        <div className="w-full max-w-md rounded-xl px-8 py-10 flex flex-col items-center gap-4 text-center bg-bg/90 backdrop-blur">
+          <div className="text-2xl font-semibold tracking-tight">AFK detected</div>
+          <div className="text-subtle text-sm pb-2">Session paused for inactivity.</div>
+          <button
+            className="px-4 py-2 bg-gray-700 text-white rounded shadow hover:opacity-90 transition"
+            onClick={handleRestart}
+          >
+            Restart
+          </button>
+        </div>
+      </div>
+    );
+  }
 
+  return (
+    <div className="flex-grow flex flex-col w-full max-w-[1800px] mx-auto relative font-mono">
       {/* Main Content Area */}
-      <div className="flex-grow flex items-center justify-center w-full max-w-[1800px] mx-auto relative">
+      <div className="flex-grow flex items-center justify-center w-full relative">
          {sessionResultData ? ( // Conditionally render if data is available
             <ResultsDashboard 
               sessionResult={sessionResultData} // Pass the full sessionResultData
@@ -356,6 +389,7 @@ function App() {
                         onSnippetComplete={handleSnippetComplete}
                         onRequestPause={handlePause}
                         onStatsUpdate={handleStatsUpdate}
+                        onAfkDetected={handleAfkDetected}
                         />
                     ) : (
                         <div className="text-center text-subtle animate-pulse">loading...</div>
@@ -367,7 +401,7 @@ function App() {
 
       {/* Footer Hint (Only when typing) */}
       {!sessionResultData && (
-        <div className="absolute bottom-8 left-0 right-0 text-center text-subtle text-sm transition-opacity duration-300 opacity-100">
+        <div className="absolute bottom-4 left-0 right-0 text-center text-subtle text-sm transition-opacity duration-300 opacity-100">
               <span className="bg-container px-2 py-1 rounded text-xs mr-2 text-text">enter</span> to pause
         </div>
       )}

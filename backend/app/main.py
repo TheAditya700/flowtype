@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import engine, Base
-from app.routers import health, snippets, sessions, users, auth
+from app.routers import health, snippets, sessions, users, auth, profile_merge
 from app.ml.vector_store import VectorStore
 import logging
 
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 # Create FastAPI app
 app = FastAPI(
     title="FlowType API",
-    description="Adaptive typing practice with two-tower retrieval",
+    description="Adaptive typing practice with snippet retrieval",
     version="0.1.0"
 )
 
@@ -42,6 +42,7 @@ app.include_router(snippets.router, prefix="/api/snippets", tags=["snippets"])
 app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
 app.include_router(users.router, prefix="/api/users", tags=["users"])
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(profile_merge.router, prefix="/api/profile", tags=["profile"])
 
 @app.get("/")
 def root():

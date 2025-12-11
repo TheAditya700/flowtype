@@ -59,6 +59,7 @@ export interface SessionCreateRequest {
   difficultyLevel: number;
   snippets: SnippetResult[];
   user_state: UserState;
+  sessionMode?: '15' | '30' | '60' | '120' | 'free';
   flowScore?: number;
   predicted_wpm?: number;
   predicted_accuracy?: number;
@@ -88,11 +89,42 @@ export interface UserStats {
   best_wpm_120: number;
 }
 
+export interface SessionTimeseriesPoint {
+  timestamp: number;
+  wpm: number;
+  accuracy: number;
+  raw_wpm?: number;
+  ema_wpm?: number;
+  ema_dev?: number;
+  ema_accuracy?: number;
+}
+
+export interface ActivityDay {
+  date: string; // YYYY-MM-DD
+  count: number;
+}
+
+export interface UserStatsDetail {
+  summary: UserStats;
+  timeseries: SessionTimeseriesPoint[];
+  activity: ActivityDay[];
+  current_streak: number;
+  longest_streak: number;
+  char_heatmap: Record<string, { accuracy: number; speed: number }>;
+}
+
 export interface UserProfile {
   user_id: string;
   username?: string;
   features: Record<string, any>;
   stats: UserStats;
+}
+
+export interface LeaderboardEntry {
+  user_id: string;
+  username?: string;
+  best_wpm: number;
+  mode: '15' | '30' | '60' | '120';
 }
 
 export interface AnalyticsRequest {

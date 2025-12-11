@@ -1,4 +1,4 @@
-import { UserState, SessionCreateRequest, SnippetResponse, UserCreate, Token, UserResponse, SnippetRetrieveResponse, UserProfile, SessionResponse, AnalyticsRequest, AnalyticsResponse } from '../types';
+import { UserState, SessionCreateRequest, SnippetResponse, UserCreate, Token, UserResponse, SnippetRetrieveResponse, UserProfile, SessionResponse, AnalyticsRequest, AnalyticsResponse, UserStatsDetail, LeaderboardEntry } from '../types';
 
 // @ts-ignore - Vite env type
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -86,6 +86,13 @@ export async function fetchCurrentUser(): Promise<UserResponse> {
   return callApi<UserResponse>('/auth/users/me', 'GET', undefined, true);
 }
 
+export async function mergeProfiles(anonUserId: string, authUserId: string): Promise<{ success: boolean }> {
+  return callApi<{ success: boolean }>('/profile/merge', 'POST', {
+    anon_user_id: anonUserId,
+    auth_user_id: authUserId
+  });
+}
+
 
 // Existing API Calls, updated to use callApi
 export async function fetchNextSnippet(userState: UserState, currentSnippetId?: string): Promise<SnippetRetrieveResponse | null> {
@@ -105,4 +112,25 @@ export async function saveSession(session: SessionCreateRequest): Promise<Sessio
 // New: Fetch User Profile (for dashboard)
 export async function fetchUserProfile(): Promise<UserProfile> {
     return callApi<UserProfile>(`/users/me/profile`, 'GET', undefined, true);
+}
+
+export async function fetchUserStatsDetail(userId: string): Promise<UserStatsDetail> {
+  return callApi<UserStatsDetail>(`/users/${userId}/stats/detail`, 'GET');
+}
+
+export async function fetchLeaderboard(mode: '15' | '30' | '60' | '120' = '60', excludeAnon: boolean = false): Promise<LeaderboardEntry[]> {
+  return callApi<LeaderboardEntry[]>(`/users/leaderboard?mode=${mode}&exclude_anon=${excludeAnon}`, 'GET');
+}
+
+// Account Management API Calls
+export async function changeUsername(newUsername: string): Promise<UserResponse> {
+  return callApi<UserResponse>('/auth/users/change-username', 'PUT', { new_username: newUsername }, true);
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<{ message: string }> {
+  return callApi<{ message: string }>('/auth/users/change-password', 'PUT', { current_password: currentPassword, new_password: newPassword }, true);
+}
+
+export async function deleteAccount(password: string): Promise<{ message: string }> {
+  return callApi<{ message: string }>('/auth/users/delete-account', 'DELETE', { password }, true);
 }

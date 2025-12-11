@@ -1,20 +1,23 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
 
 interface AuthModalProps {
   onClose: () => void;
   showModal: boolean;
+  isPage?: boolean; // If true, renders as a page without modal overlay
 }
 
-const AuthModal: React.FC<AuthModalProps> = ({ onClose, showModal }) => {
+const AuthModal: React.FC<AuthModalProps> = ({ onClose, showModal, isPage = false }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const { login, register, loading } = useAuth();
+  const navigate = useNavigate();
 
-  if (!showModal) return null;
+  if (!showModal && !isPage) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,18 +28,23 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, showModal }) => {
       } else {
         await register({ username, password });
       }
-      onClose(); // Close modal on successful auth
+      if (isPage) {
+        navigate('/'); // Navigate to home page when used as a page
+      } else {
+        onClose(); // Close modal on successful auth (only in modal mode)
+      }
     } catch (err: any) {
       setError(err.message || 'An unexpected error occurred.');
     }
   };
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-      <div className="bg-container p-8 rounded-lg shadow-lg max-w-sm w-full relative">
+  const content = (
+    <div className="bg-container p-8 rounded-lg shadow-lg max-w-sm w-full relative">
+      {!isPage && (
         <button onClick={onClose} className="absolute top-4 right-4 text-subtle hover:text-text">
           <X size={20} />
         </button>
+      )}
         <h2 className="text-2xl font-bold text-primary mb-6 text-center">
           {isLogin ? 'Login' : 'Register'}
         </h2>
@@ -86,6 +94,15 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, showModal }) => {
           </button>
         </p>
       </div>
+  );
+
+  if (isPage) {
+    return content;
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+      {content}
     </div>
   );
 };

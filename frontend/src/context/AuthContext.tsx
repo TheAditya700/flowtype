@@ -1,6 +1,7 @@
 import React, { createContext, useState, useEffect, useContext, ReactNode, useCallback } from 'react';
 import { loginUser, registerUser, fetchCurrentUser, removeToken, getToken, setToken } from '../api/client';
 import { UserCreate, UserResponse } from '../types';
+import { setUserId, clearAuthUserId } from '../utils/anonymousUser';
 
 interface AuthContextType {
   user: UserResponse | null;
@@ -47,7 +48,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const token = await loginUser(credentials);
       if (token) {
-        await loadUser(); // Fetch user data after successful login
+        const currentUser = await fetchCurrentUser();
+        setUser(currentUser);
+        // Update stored user ID to authenticated user
+        setUserId(currentUser.id);
       }
     } finally {
       setLoading(false);
@@ -71,6 +75,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = () => {
     removeToken();
     setUser(null);
+    // Clear authenticated user ID, but keep anonymous ID for local data
+    clearAuthUserId();
   };
 
   return (

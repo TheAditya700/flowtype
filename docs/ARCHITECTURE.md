@@ -1,65 +1,337 @@
-# FlowType Architecture
+# **FlowType Architecture Overview (v0.3.0 MVP)**
 
-This document outlines the high-level architecture of the FlowType application.
+This document describes the system architecture, ML pipeline, and key design decisions behind FlowType's adaptive typing practice engine.
 
-## Overview
+---
 
-FlowType is an adaptive typing application designed to help users improve their typing skills. It uses a two-tower machine learning system to recommend typing snippets that are optimally challenging for the user's current skill level, aiming to keep them in a "flow" state.
+## **System Overview**
 
-## Components
+FlowType is a full-stack typing practice application that adapts snippet difficulty based on user skill. The system comprises:
 
-### 1. Frontend (React + TypeScript + Vite)
+1. **Frontend**: React + TypeScript + Vite (real-time UI, keystroke capture)
+2. **Backend**: FastAPI + SQLAlchemy (API, user management, session logging)
+3. **ML Pipeline**: Feature extraction + FAISS vector indexing + LinTS contextual bandit
+4. **Database**: SQLite (dev) / PostgreSQL (prod)
 
-*   **User Interface:** Built with React, providing a responsive and interactive typing experience.
-*   **State Management:** React hooks manage the application's local state, including typing progress, real-time statistics, and user input.
-*   **API Client:** Handles communication with the FastAPI backend to fetch snippets and save session data.
-*   **Styling:** Tailwind CSS for a utility-first approach to styling.
-*   **Build Tool:** Vite for fast development and optimized builds.
+---
 
-### 2. Backend (FastAPI + Python)
+## **Data Pipeline**
 
-*   **API Endpoints:** Provides RESTful APIs for snippet retrieval, session management, and user statistics.
-*   **Database Interaction:** Uses SQLAlchemy ORM to interact with the PostgreSQL database.
-*   **Machine Learning Core:**
-    *   **User Encoder:** Transforms user performance metrics (WPM, accuracy, errors) into a vector embedding.
-    *   **Snippet Encoder:** Uses `sentence-transformers` (all-MiniLM-L6-v2) to convert typing snippets into vector embeddings.
-    *   **FAISS Vector Store:** An in-memory FAISS index stores snippet embeddings, enabling fast similarity search.
-    *   **Difficulty Scoring:** Calculates a difficulty score for each snippet based on features like word length, rare letters, and punctuation.
-    *   **Ranker:** Ranks candidate snippets retrieved from FAISS, considering both similarity to user state and adaptive difficulty logic, to select the next optimal snippet.
+### **1. Snippet Dataset**
 
-### 3. Database (PostgreSQL via Supabase)
+**Source**: 10,000 English words (curated wordlist)
 
-*   **Users Table:** Stores basic user information (optional for MVP).
-*   **Snippets Table:** Stores pre-processed typing snippets along with their calculated difficulty features.
-*   **Typing Sessions Table:** Records detailed telemetry for each typing session, including WPM, accuracy, errors, keystroke events, and difficulty progression.
-*   **Snippet Usage Table:** Tracks which snippets were presented during a session.
+**Enrichment**:
+- **Zipf Frequencies**: Using wordfreq library for corpus-based word popularity
+- **Bigram/Trigram Frequencies**: Co-occurrence statistics from Brown corpus
+- **Ergonomic Metadata**: Key-distance, hand-switching patterns
 
-## Data Flow
+**Snippet Generation**:
+- Random word selection with frequency weighting
+- Snippet length: 30–120 characters
+- Variety via Markov chain (word transitions based on n-gram probabilities)
+- ~3,000 unique snippets in database
 
-1.  **User Interaction:** User types in the frontend.
-2.  **Frontend State Update:** Real-time WPM, accuracy, and keystroke events are tracked.
-3.  **Session Completion:** When a session ends, the frontend sends session data to the backend.
-4.  **Backend Session Storage:** The backend saves the session data to PostgreSQL.
-5.  **Next Snippet Request:** The frontend requests the next snippet, sending the current user state (derived from recent performance) to the backend.
-6.  **User State Encoding:** The backend's user encoder transforms the user state into an embedding.
-7.  **Vector Search:** The user embedding is used to query the FAISS vector store, retrieving a set of candidate snippets.
-8.  **Snippet Ranking:** The ranker re-ranks these candidates, applying adaptive difficulty logic to select the most suitable snippet.
-9.  **Snippet Delivery:** The selected snippet is sent back to the frontend for the user to type.
+### **2. Difficulty Feature Extraction**
 
-## Machine Learning Pipeline
+Each snippet is characterized by **50+ engineered features**:
 
-1.  **Offline Preprocessing:**
-    *   Raw word lists are cleaned and segmented into snippets.
-    *   Each snippet's difficulty features (e.g., average word length, rare letter count) are calculated.
-    *   Snippet text is encoded into embeddings using `sentence-transformers`.
-    *   A FAISS index is built from these snippet embeddings and saved to disk along with metadata.
-2.  **Online Inference (Snippet Retrieval):**
-    *   User's real-time performance metrics are used to create a user state vector.
-    *   This user state vector queries the FAISS index to find similar snippets.
-    *   A ranking function then selects the best snippet, considering both similarity and adaptive difficulty.
+| Category | Features | Count |
+|---|---|---|
+| **Linguistic** | Avg word Zipf score, vocabulary diversity, word length distribution, sentence structure | 8 |
+| **Character Distribution** | Char entropy, consonant/vowel ratio, symbol/punctuation density | 5 |
+| **Ergonomic Load** | Shift-key %, number/punctuation %, bigram hand-switching, row-jumps, key-distance | 12 |
+| **Sequence Patterns** | Consecutive same-hand pairs, finger stretches, alternation patterns | 8 |
+| **Linguistic Complexity** | Phonetic features, compound words, syllable count, syllable patterns | 7 |
+| **Positional Variance** | Early/mid/late character patterns, word-start/word-end difficulty | 5 |
 
-## Deployment Strategy
+**Normalization**: Z-score normalization (mean=0, std=1) within corpus.
 
-*   **Backend:** Packaged as a single Docker container and deployed to Railway.
-*   **Frontend:** Built as static assets and deployed to Vercel.
-*   **Database:** PostgreSQL hosted on Supabase.
+### **3. Vectorization & Indexing**
+
+- **Embedding**: 30-dimensional fixed-size vector (subset of normalized features)
+- **Index**: FAISS flat index (L2 distance metric)
+- **Lookup Speed**: ~10ms for top-100 neighbors
+
+---
+
+## **User Modeling**
+
+### **Keystroke Telemetry**
+
+Each keystroke logged with:
+- **Timestamp** (millisecond precision)
+- **Key** (character pressed)
+- **Correctness** (match vs. target snippet)
+- **Inter-keystroke Interval (IKI)** (time since previous keystroke)
+
+### **Session Metrics**
+
+Per-session statistics computed:
+- **WPM**: (Characters typed / 5) / (Time in minutes)
+- **Accuracy**: (Correct keystrokes / Total keystrokes) × 100%
+- **Speed Distribution**: IKI percentiles (median, p95)
+- **Backspace Rate**: Corrections made / Total characters
+- **Session Duration**: Time to completion or timeout
+
+### **User Profile (Rolling Stats)**
+
+After each session, user stats updated with EMA (exponential moving average):
+- **EMA WPM**: Weighted rolling average of last 10 sessions
+- **EMA Accuracy**: Weighted rolling average of last 10 sessions
+- **Consistency**: Variance of WPM over recent sessions
+- **Best WPM by Mode**: Per-mode personal bests (15s, 30s, 60s, 120s)
+
+### **Cold Start**
+
+For new users without session history:
+- Initialize with **median difficulty** snippet (50th percentile)
+- Adapt after 2–3 sessions based on performance
+
+---
+
+## **Adaptive Difficulty Selection**
+
+### **Algorithm: LinTS (Linear Thompson Sampling)**
+
+**Problem**: Balance difficulty to optimize learning (not too easy, not too hard).
+
+**Approach**:
+1. **User Skill**: Represented as EMA WPM + accuracy
+2. **Snippet Difficulty**: 30-dim feature vector (FAISS embedding)
+3. **Candidate Retrieval**: FAISS top-100 nearest neighbors to user skill profile
+4. **Bandit Policy**: Thompson sampling over difficulty posterior
+5. **Reward Signal**: ΔWPM + β × ΔAccuracy (improvement vs. session average)
+
+**Process**:
+```
+For each new session:
+  1. Get user's last 5-session stats (EMA WPM, accuracy)
+  2. Encode user as vector in feature space
+  3. Query FAISS: top-100 snippets similar to user skill
+  4. LinTS policy: sample difficulty target from posterior
+  5. Rank candidates by distance to target → pick best match
+  6. Log session: [user, snippet, WPM, accuracy, keystroke log]
+  7. Update bandit posterior offline (nightly batch)
+```
+
+### **Safety Constraints**
+
+- **Maximum difficulty jump**: Limited +10% per session (fatigue prevention)
+- **Minimum difficulty floor**: Median snippet for struggling users
+- **Free mode exception**: Best WPM not tracked (exploration encouraged)
+
+---
+
+## **Frontend Architecture**
+
+### **Key Components**
+
+**App.tsx** (Root)
+- Manages session state (mode, paused, AFK)
+- Routes between pages (Type, Stats, Leaderboard, Wiki)
+- Renders AFK overlay on inactivity (5s idle timeout)
+
+**TypingZone.tsx** (Main Typing Interface)
+- Real-time keystroke capture
+- Cursor positioning (char-by-char)
+- Progress visualization
+- AFK detection (5s keystroke inactivity)
+
+**StatsPage.tsx**
+- Lifetime stats (total sessions, total time, best WPM)
+- Session history (last 20 sessions)
+- Keyboard heatmap (Recharts-based)
+- Activity heatmap (per-day session tracking)
+
+**LeaderboardPage.tsx**
+- Per-mode rankings (15s, 30s, 60s, 120s)
+- Username + best WPM + session count
+- Progression tips (accuracy → consistency → speed)
+
+**Account Management Pages**
+- **ChangeUsernamePage**: Update username
+- **ChangePasswordPage**: Change password (verify current password)
+- **DeleteAccountPage**: Two-step confirmation (password + typed confirmation)
+
+### **Context & State Management**
+
+**SessionModeContext**: Shared session state
+- Current mode (15/30/60/120/free)
+- Session started flag
+- Pause flag
+- Default mode: 15s
+
+**AuthContext**: User authentication
+- Username, user ID
+- Auth token (JWT)
+- Login/logout/register functions
+
+---
+
+## **Backend API**
+
+### **Authentication**
+- `POST /auth/register`: Create account
+- `POST /auth/login`: Get JWT token
+- `PUT /auth/users/change-username`: Update username
+- `PUT /auth/users/change-password`: Update password (verify current)
+- `DELETE /auth/users/delete-account`: Delete account + cascade delete sessions
+
+### **Snippets**
+- `GET /snippets/next?mode={mode}`: Retrieve next adaptive snippet
+
+### **Sessions**
+- `POST /sessions`: Log session (keystroke log, WPM, accuracy, mode)
+- `GET /sessions/user`: Get user's session history
+
+### **Leaderboards**
+- `GET /leaderboards/{mode}`: Top-100 users by best WPM in mode
+
+### **Users**
+- `GET /users/{user_id}/stats`: Get user stats (lifetime, per-mode)
+
+---
+
+## **Database Schema (SQLite / PostgreSQL)**
+
+### **Core Tables**
+
+```python
+# User
+- id (INTEGER PRIMARY KEY)
+- username (VARCHAR UNIQUE)
+- hashed_password (VARCHAR)
+- created_at (BIGINT)
+- stats (JSON): {"lifetime_sessions": 10, "lifetime_wpm": 65.2, "consistency": 3.1}
+- best_wpm_15, best_wpm_30, best_wpm_60, best_wpm_120 (FLOAT)
+
+# Snippet
+- id (INTEGER PRIMARY KEY)
+- text (VARCHAR)
+- length (INTEGER)
+- difficulty_features (JSON): {50+ feature values}
+- embedding (BLOB): 30-dim normalized vector
+- created_at (BIGINT)
+
+# Session
+- id (INTEGER PRIMARY KEY)
+- user_id (FK → User)
+- snippet_id (FK → Snippet)
+- mode (VARCHAR): "15", "30", "60", "120", "free"
+- wpm (FLOAT)
+- accuracy (FLOAT)
+- keystroke_log (JSON): [{"key": "a", "ts": 1234, "correct": true}, ...]
+- created_at (BIGINT)
+
+# BanditState (RL parameters)
+- id (INTEGER PRIMARY KEY)
+- user_id (FK → User, UNIQUE)
+- skill_posterior_mean (FLOAT)
+- skill_posterior_cov (FLOAT)
+- session_history (JSON): [{"reward": 5.2, "difficulty": 0.6}, ...]
+- updated_at (BIGINT)
+```
+
+---
+
+## **Performance Characteristics**
+
+| Component | Latency | Bottleneck |
+|---|---|---|
+| **FAISS Retrieval** | ~10ms | Vector similarity search |
+| **Bandit Policy** | ~5ms | Numpy/scipy ops |
+| **API E2E** | <100ms | DB query + FAISS + policy |
+| **Frontend Render** | 16ms (60fps) | React diffing + DOM updates |
+| **Keystroke Capture** | <2ms | Native event listeners |
+
+---
+
+## **ML Loop**
+
+### **Offline (Nightly Batch)**
+
+```
+For each user with recent sessions:
+  1. Extract features from keystroke logs (WPM, accuracy, patterns)
+  2. Update EMA stats
+  3. Run Bayesian bandit posterior update
+  4. Save updated skill posterior to BanditState
+```
+
+### **Online (Per-Session)**
+
+```
+At session start:
+  1. Load user's skill posterior mean
+  2. Query FAISS for top-K similar snippets
+  3. Apply LinTS policy → select difficulty target
+  4. Rank candidates → pick best match
+
+At session end:
+  1. Compute WPM, accuracy, keystroke metrics
+  2. Calculate reward = ΔWPM + β·ΔAccuracy
+  3. Queue for offline bandit update
+  4. Update leaderboard cache
+```
+
+---
+
+## **Testing & Monitoring**
+
+### **Manual Testing**
+- Real-time typing test (5–10 sessions per mode)
+- Account management (username/password changes)
+- AFK detection (5s idle trigger)
+- Leaderboard consistency
+
+### **Automated Testing (TODO)**
+- Unit tests for API endpoints
+- Integration tests for ML pipeline
+- E2E tests for critical user flows
+- Load testing for FAISS retrieval
+
+### **Logging & Monitoring**
+- Application logs: uvicorn + custom loggers
+- Session logs: JSON keystroke archives
+- Performance metrics: API latency, FAISS query time
+- User metrics: WPM distribution, leaderboard churn
+
+---
+
+## **Technology Stack**
+
+| Layer | Technology |
+|---|---|
+| **Frontend** | React 18 + TypeScript + Vite |
+| **UI Library** | Tailwind CSS + Recharts + Lucide Icons |
+| **Backend** | FastAPI + Uvicorn |
+| **ORM** | SQLAlchemy |
+| **Database** | SQLite (dev) / PostgreSQL (prod) |
+| **ML** | NumPy + SciPy + FAISS + scikit-learn |
+| **ML Models** | GRU (user profiling) + LinTS (bandit) |
+| **Migrations** | Alembic |
+| **Auth** | JWT (PyJWT) + bcrypt |
+| **Containerization** | Docker + Docker Compose |
+
+---
+
+## **Future Enhancements**
+
+### **ML Improvements**
+- Hierarchical bandits (coarse → fine granularity)
+- Transfer learning for cold-start users
+- Feature importance analysis (SHAP)
+- Real-time online learning (not batched)
+
+### **UX Enhancements**
+- Difficulty labels ("Warmup" vs. "Challenge")
+- Personalized practice recommendations
+- Keystroke-level feedback ("left pinky errors")
+- Skill progression trends (daily/weekly)
+
+### **Platform Expansion**
+- Mobile app (React Native)
+- Multiplayer modes (competitive)
+- Custom wordlists
+- API for third-party integrations

@@ -49,6 +49,13 @@ def retrieve_snippets(
             # Handle user_id as string or UUID
             uid_str = str(request.user_state.user_id)
             user = db.query(User).filter(User.id == uid_str).first()
+            
+            # Auto-create anonymous user if doesn't exist
+            if not user:
+                user = User(id=uid_str, is_anonymous=True)
+                db.add(user)
+                db.flush()
+            
             if user and user.features:
                 extractor = UserFeatureExtractor.from_dict(user.features)
                 user_ema = extractor.compute_user_features().tolist()

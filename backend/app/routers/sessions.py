@@ -54,7 +54,7 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
         if request.user_id:
             user = db.query(User).filter(User.id == request.user_id).first()
             if not user:
-                user = User(id=request.user_id)
+                user = User(id=request.user_id, is_anonymous=True)
                 db.add(user)
                 db.flush()
 
@@ -93,6 +93,8 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
         # Free mode sends duration calculated from keystrokes
         duration_seconds = request.durationSeconds
         
+        is_free_mode = request.sessionMode == 'free'
+
         # For WPM: count only correct, non-backspace keystrokes
         correct_keystrokes = sum(1 for k in request.keystrokeData if k.isCorrect and not k.isBackspace)
         
@@ -150,31 +152,32 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
             }
             user.last_active = func.now()
             
-            # --- Update Best WPMs ---
-            current_wpm = calculated_wpm
-            duration = duration_seconds
-            
-            # Helper to update best if current is better within tolerance window
-            # Tolerance: +/- 10% or absolute time window?
-            # User request: "best wpms for 15 30 60 and 120"
-            # We usually map actual duration to closest bucket.
-            
-            best_wpms = dict(user.best_wpms) if user.best_wpms else {"15": 0.0, "30": 0.0, "60": 0.0, "120": 0.0}
-            
-            # Define buckets
-            buckets = [15, 30, 60, 120]
-            
-            # Find closest bucket
-            closest_bucket = min(buckets, key=lambda x: abs(x - duration))
-            
-            # Check if duration is reasonably close (e.g. within 20% or +/- 5s)
-            # If user types for 16s, it counts for 15s bucket.
-            # If 45s, counts for 30s or 60s? Maybe 60?
-            if abs(closest_bucket - duration) / closest_bucket < 0.25: # 25% tolerance
-                bucket_key = str(closest_bucket)
-                if current_wpm > best_wpms.get(bucket_key, 0.0):
-                    best_wpms[bucket_key] = current_wpm
-                    user.best_wpms = best_wpms
+            # --- Update Best WPMs (timed modes only) ---
+            if not is_free_mode:
+                current_wpm = calculated_wpm
+                duration = duration_seconds
+                
+                # Helper to update best if current is better within tolerance window
+                # Tolerance: +/- 10% or absolute time window?
+                # User request: "best wpms for 15 30 60 and 120"
+                # We usually map actual duration to closest bucket.
+                
+                best_wpms = dict(user.best_wpms) if user.best_wpms else {"15": 0.0, "30": 0.0, "60": 0.0, "120": 0.0}
+                
+                # Define buckets
+                buckets = [15, 30, 60, 120]
+                
+                # Find closest bucket
+                closest_bucket = min(buckets, key=lambda x: abs(x - duration))
+                
+                # Check if duration is reasonably close (e.g. within 20% or +/- 5s)
+                # If user types for 16s, it counts for 15s bucket.
+                # If 45s, counts for 30s or 60s? Maybe 60?
+                if abs(closest_bucket - duration) / closest_bucket < 0.25: # 25% tolerance
+                    bucket_key = str(closest_bucket)
+                    if current_wpm > best_wpms.get(bucket_key, 0.0):
+                        best_wpms[bucket_key] = current_wpm
+                        user.best_wpms = best_wpms
             
             db.add(user)
 
@@ -451,7 +454,7 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
                 if char in char_iki_stats and char_iki_stats[char]['count'] > 0:
                     avg_key_iki = char_iki_stats[char]['sum'] / char_iki_stats[char]['count']
                     speed = max(0.0, min(1.0, 1.0 - (avg_key_iki - 50) / 250))
-                heatmap_data[char] = {"accuracy": acc, "speed": speed}
+                heatmap_data[char] = {"accuracy": float(acc), "speed": float(speed)}
 
         return SessionResponse(
             session_id=str(db_session.id),

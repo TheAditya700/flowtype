@@ -1,5 +1,5 @@
 # ------------------------------------------------------
-# schema.py  (rewritten for GRU + RL + Two-Tower ranker)
+# schema.py  (Pydantic models for API requests/responses)
 # ------------------------------------------------------
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
@@ -69,6 +69,9 @@ class SessionCreateRequest(BaseModel):
     wordsTyped: int
     keystrokeData: List[KeystrokeEvent]
     difficultyLevel: float
+
+    # Session mode (timed: '15'|'30'|'60'|'120' or 'free')
+    sessionMode: Optional[str] = None
 
     # Full snippet log
     snippets: List[SnippetResult]
@@ -175,11 +178,47 @@ class UserStats(BaseModel):
     best_wpm_60: Optional[float] = 0.0
     best_wpm_120: Optional[float] = 0.0
 
+
+class SessionTimeseriesPoint(BaseModel):
+    timestamp: int
+    wpm: float
+    accuracy: float
+    raw_wpm: Optional[float] = None
+    ema_wpm: Optional[float] = None
+    ema_dev: Optional[float] = None
+    ema_accuracy: Optional[float] = None
+
+
+class ActivityDay(BaseModel):
+    date: str  # ISO date YYYY-MM-DD
+    count: int
+
+
+class CharStat(BaseModel):
+    accuracy: float  # 0-1
+    speed: float     # normalized 0-1 (relative frequency)
+
+
+class UserStatsDetail(BaseModel):
+    summary: UserStats
+    timeseries: list[SessionTimeseriesPoint]
+    activity: list[ActivityDay]
+    current_streak: int
+    longest_streak: int
+    char_heatmap: dict[str, CharStat] = {}
+
 class UserProfile(BaseModel):
     user_id: str
     username: Optional[str] = None # Added username
     features: dict
     stats: UserStats
+
+
+class LeaderboardEntry(BaseModel):
+    user_id: str
+    username: Optional[str] = None
+    best_wpm: float
+    mode: str
 
 # ------------------------------------------------------
 # Authentication Schemas
@@ -201,3 +240,13 @@ class UserResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class ChangeUsername(BaseModel):
+    new_username: str
+
+class ChangePassword(BaseModel):
+    current_password: str
+    new_password: str
+
+class DeleteAccount(BaseModel):
+    password: str

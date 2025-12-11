@@ -1,5 +1,4 @@
 faiss-cpu
 numpy
-scikit-learn
-lightgbm
-pandas
+wordfreq
+wordfreq

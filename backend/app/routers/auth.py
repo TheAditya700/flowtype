@@ -100,3 +100,67 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
 @router.get("/users/me", response_model=UserResponse)
 async def read_users_me(current_user: User = Depends(get_current_active_user)):
     return current_user
+
+@router.put("/users/change-username", response_model=UserResponse)
+async def change_username(change_data: dict, current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
+    new_username = change_data.get("new_username")
+    if not new_username or len(new_username.strip()) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username cannot be empty"
+        )
+    
+    # Check if username already exists
+    existing_user = db.query(User).filter(User.username == new_username).first()
+    if existing_user and existing_user.id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already taken"
+        )
+    
+    current_user.username = new_username
+    db.commit()
+    db.refresh(current_user)
+    return current_user
+
+@router.put("/users/change-password")
+async def change_password(change_data: dict, current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
+    current_password = change_data.get("current_password")
+    new_password = change_data.get("new_password")
+    
+    if not current_password or not new_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current and new password are required"
+        )
+    
+    if not verify_password(current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Current password is incorrect"
+        )
+    
+    current_user.hashed_password = get_password_hash(new_password)
+    db.commit()
+    db.refresh(current_user)
+    return {"message": "Password changed successfully"}
+
+@router.delete("/users/delete-account")
+async def delete_account(delete_data: dict, current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
+    password = delete_data.get("password")
+    
+    if not password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password is required to delete account"
+        )
+    
+    if not verify_password(password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Password is incorrect"
+        )
+    
+    db.delete(current_user)
+    db.commit()
+    return {"message": "Account deleted successfully"}

@@ -22,9 +22,10 @@ interface TypingZoneProps {
   onSnippetComplete: (stats: SnippetStats) => void;
   onRequestPause: () => void;
   onStatsUpdate?: (stats: { wpm: number; accuracy: number; time: number; timeRemaining: number | null; sessionMode: '15' | '30' | '60' | '120' | 'free'; sessionStarted: boolean }) => void;
+  onAfkDetected?: () => void;
 }
 
-const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, onRequestPause, onStatsUpdate }) => {
+const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, onRequestPause, onStatsUpdate, onAfkDetected }) => {
   const [typedHistory, setTypedHistory] = useState<string[]>([]);
   const [currentTyped, setCurrentTyped] = useState(''); 
   const [errors, setErrors] = useState(0);
@@ -46,6 +47,8 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
   // Input Ref (Hidden)
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const lastActivityRef = useRef<number>(Date.now());
+  const afkTriggeredRef = useRef<boolean>(false);
 
   // Current Data
   const currentSnippet = snippets[0];
@@ -128,21 +131,29 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
     };
   }, [sessionMode]);
 
+  // AFK detection: trigger after 5s without key activity once a session has started
+  useEffect(() => {
+    if (!sessionStarted) {
+      afkTriggeredRef.current = false;
+      lastActivityRef.current = Date.now();
+      return;
+    }
+
+    const interval = setInterval(() => {
+      if (afkTriggeredRef.current) return;
+      const idleFor = Date.now() - lastActivityRef.current;
+      if (idleFor >= 5000) {
+        afkTriggeredRef.current = true;
+        onAfkDetected?.();
+      }
+    }, 500);
+
+    return () => clearInterval(interval);
+  }, [sessionStarted, onAfkDetected]);
+
 
   // If there's no snippet, don't execute any further logic or render
   if (!currentSnippet) return null;
-
-  // DEBUGGING: Expose state to window
-  useEffect(() => {
-    (window as any).__FLOWTYPE_DEBUG__ = {
-      wordIndex,
-      charIndex,
-      currentTyped,
-      typedHistory,
-      cursorPos,
-      snippet: currentSnippet
-    };
-  }, [wordIndex, charIndex, currentTyped, typedHistory, cursorPos, currentSnippet]);
 
   // Cursor Positioning Logic (Same as before, but depends on new state)
   useLayoutEffect(() => {
@@ -212,6 +223,7 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
   }, [snippets]);
 
   const handleKeyUp = (e: React.KeyboardEvent<HTMLInputElement>) => {
+      lastActivityRef.current = Date.now();
       const id = pendingKeys.current[e.code];
       if (id) {
           updateKeystrokeEvent(id, { keyup_timestamp: Date.now() });
@@ -220,10 +232,12 @@ const TypingZone: React.FC<TypingZoneProps> = ({ snippets, onSnippetComplete, on
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    // Pause on Enter (only if in free mode and session has started)
+    lastActivityRef.current = Date.now();
+    afkTriggeredRef.current = false;
+    // Pause on Enter (only if in timed modes and session has started)
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (sessionMode === 'free' && sessionStarted) {
+      if (sessionMode !== 'free' && sessionStarted) {
         // Check if we're in the middle of a snippet
         if (typedHistory.length > 0 || currentTyped.length > 0) {
           const snippetEvents = keystrokeEvents.slice(snippetEventOffset.current);
