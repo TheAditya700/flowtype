@@ -16,7 +16,7 @@ WORKDIR /app
 
 # Build dependencies for numpy/psycopg2/cryptography etc.
 RUN apt-get update && apt-get install -y \
-    build-essential gcc g++ curl \
+    build-essential gcc g++ curl libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt .
@@ -28,17 +28,23 @@ COPY backend/ .
 FROM python:3.12-slim AS runtime
 WORKDIR /app
 
-# Install Caddy (static binary — no apt repo needed)
-RUN apt-get update && apt-get install -y curl && \
-    curl -L "https://caddyserver.com/api/download?os=linux&arch=amd64" \
+# Install runtime dependencies (libpq for psycopg2, curl for healthcheck)
+RUN apt-get update && apt-get install -y \
+    curl libpq5 ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Caddy (static binary)
+RUN curl -L "https://caddyserver.com/api/download?os=linux&arch=amd64" \
         -o /tmp/caddy.tar.gz && \
     tar -xzf /tmp/caddy.tar.gz -C /usr/bin caddy && \
     chmod +x /usr/bin/caddy && \
-    rm -rf /tmp/caddy.tar.gz && \
-    apt-get purge -y curl && apt-get autoremove -y
+    rm -rf /tmp/caddy.tar.gz
 
-# Copy backend dependencies and code
-COPY --from=backend-builder /usr/local /usr/local
+# Copy Python packages from builder
+COPY --from=backend-builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=backend-builder /usr/local/bin /usr/local/bin
+
+# Copy backend code
 COPY --from=backend-builder /app /app
 
 # Copy built frontend
@@ -53,11 +59,18 @@ EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost/ || exit 1
 
-# Start both backend + Caddy
-RUN echo '#!/bin/sh\n\
+# Create startup script
+RUN printf '#!/bin/sh\n\
+set -e\n\
 export PYTHONUNBUFFERED=1\n\
+echo "Starting FastAPI backend..."\n\
 uvicorn app.main:app --host 0.0.0.0 --port 8000 &\n\
-exec caddy run --config /etc/caddy/Caddyfile\n' > /start.sh \
+BACKEND_PID=$!\n\
+sleep 2\n\
+echo "Starting Caddy..."\n\
+caddy run --config /etc/caddy/Caddyfile &\n\
+CADDY_PID=$!\n\
+wait $BACKEND_PID $CADDY_PID\n' > /start.sh \
     && chmod +x /start.sh
 
 CMD ["/start.sh"]
