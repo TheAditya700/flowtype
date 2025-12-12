@@ -44,29 +44,22 @@ exec caddy run --config /etc/caddy/Caddyfile\n\
 ############################
 FROM caddy:2-alpine
 
-# Install Python runtime + dumb-init
 RUN apk add --no-cache python3 py3-pip dumb-init
 
-# Copy reverse proxy config
 COPY Caddyfile /etc/caddy/Caddyfile
 
-# Copy built frontend
 COPY --from=frontend-builder /frontend/dist /srv
 
-# Copy backend code + deps
 COPY --from=backend-builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=backend-builder /usr/local/bin /usr/local/bin
 COPY --from=backend-builder /app /app
 
 WORKDIR /app
 
 EXPOSE 80 443
 
-# Healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
 
-# Use dumb-init for proper signal handling
 ENTRYPOINT ["dumb-init", "--"]
-
-# Start both backend and Caddy
 CMD ["/app/start.sh"]
