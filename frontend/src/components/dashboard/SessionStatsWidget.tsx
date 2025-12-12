@@ -5,7 +5,7 @@ interface SessionStatsWidgetProps {
   rawWpm: number;
   kspc: number;
   avgChunkLength: number;
-  rollover: number;
+  ikiStdDev: number;
   smoothness: number;
 }
 
@@ -14,7 +14,7 @@ const SessionStatsWidget: React.FC<SessionStatsWidgetProps> = ({
   rawWpm,
   kspc,
   avgChunkLength,
-  rollover
+  ikiStdDev
 }) => {
   return (
     <div className="w-full bg-gray-900 rounded-xl p-6 border border-gray-800">
@@ -52,12 +52,12 @@ const SessionStatsWidget: React.FC<SessionStatsWidgetProps> = ({
           <div className="text-xs text-gray-500 font-mono mt-1">Chunk Len</div>
         </div>
 
-        {/* Rollover */}
+        {/* IKI Std Dev */}
         <div className="flex flex-col items-center justify-center">
           <div className="text-4xl font-bold font-mono text-yellow-400">
-            {rollover.toFixed(1)}%
+            {ikiStdDev.toFixed(1)}
           </div>
-          <div className="text-xs text-gray-500 font-mono mt-1">Rollover</div>
+          <div className="text-xs text-gray-500 font-mono mt-1">IKI σ (ms)</div>
         </div>
 
       </div>

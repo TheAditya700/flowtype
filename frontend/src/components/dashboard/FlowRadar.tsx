@@ -29,9 +29,9 @@ const FlowRadar: React.FC<FlowRadarProps> = ({ metrics }) => {
   ];
 
   return (
-    <div className="w-full h-[300px] bg-gray-900 rounded-xl p-4 border border-gray-800 flex flex-col items-center justify-center relative">
-      <h3 className="text-gray-400 text-sm font-medium absolute top-4 left-4">Flow Radar</h3>
-      <ResponsiveContainer width="100%" height="100%">
+    <div className="w-full bg-gray-900 rounded-xl p-4 border border-gray-800 flex flex-col items-center justify-center relative min-h-[300px]">
+      <h3 className="text-gray-400 text-sm font-medium absolute top-6 left-6">Flow Radar</h3>
+      <ResponsiveContainer width="100%" height={385}>
         <RadarChart cx="50%" cy="53%" outerRadius="60%" data={data}>
           <PolarGrid stroke="#374151" />
           <PolarAngleAxis dataKey="subject" tick={{ fill: '#9CA3AF', fontSize: 11 }} />

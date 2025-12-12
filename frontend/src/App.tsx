@@ -6,7 +6,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { getUserId } from './utils/anonymousUser'; 
 
 import TypingZoneStatsDisplay from './components/TypingZoneStatsDisplay';
-import { useTheme } from './context/ThemeContext';
 import { useAuth } from './context/AuthContext';
 import { useSessionMode } from './context/SessionModeContext';
 
@@ -20,7 +19,6 @@ interface QueuedSnippet {
 }
 
 function App() {
-  const { theme, setTheme } = useTheme();
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   
   const [snippetQueue, setSnippetQueue] = useState<QueuedSnippet[]>([]);

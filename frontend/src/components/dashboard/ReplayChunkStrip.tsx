@@ -102,7 +102,7 @@ const ReplayChunkStrip: React.FC<ReplayChunkStripProps> = ({ events }) => {
   };
 
   return (
-    <div className="w-full bg-gray-900 rounded-xl p-6 border border-gray-800">
+    <div className="w-full bg-gray-900 rounded-xl p-6 border border-gray-800 min-h-[400px] min-w-[1160px] flex flex-col">
       <div className="flex justify-between items-center mb-6">
         <div className="flex bg-gray-800 rounded-lg p-1">
             <button 
@@ -324,7 +324,7 @@ const ReplayChunkStrip: React.FC<ReplayChunkStripProps> = ({ events }) => {
       )}
       
       {/* Legend */}
-      <div className="mt-4 flex gap-4 text-xs text-gray-500">
+      <div className="mt-4 flex gap-4 pt-6 text-xs text-gray-500">
           {mode === 'rollover' ? (
               <>
                 <div className="flex items-center gap-1"><div className="w-3 h-3 border border-purple-300/60 rounded-sm bg-purple-900/20"></div> Possible</div>

@@ -41,11 +41,13 @@ const IkiHistogramWidget: React.FC<IkiHistogramWidgetProps> = ({ replayEvents })
 
   const maxCount = Math.max(...bins, 1);
 
+  {/* text-gray-400 text-sm font-medium absolute top-6 left-6 */}
+
   return (
     <div className="w-full h-full bg-gray-900 rounded-xl p-6 border border-gray-800 flex flex-col gap-4">
       {/* Header with title and filter tabs inline, right-aligned */}
-      <div className="flex items-center justify-between">
-        <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider">IKI Distribution</h3>
+      <div className="flex w-full justify-between">
+        <h3 className="text-gray-400 text-sm font-medium">IKI Distribution</h3>
         <div className="flex bg-gray-800 rounded-lg p-1 w-fit">
           <button
             onClick={() => setFilter('all')}
@@ -75,7 +77,7 @@ const IkiHistogramWidget: React.FC<IkiHistogramWidgetProps> = ({ replayEvents })
       </div>
 
       {/* Histogram bars with labels - stretched height */}
-      <div className="flex-1 flex items-end gap-1 min-h-[200px]">
+      <div className="flex-1 flex items-end gap-1 min-h-[150px]">
         {bins.map((count, idx) => {
           const heightPercent = (count / maxCount) * 100;
           const binStart = idx * BIN_SIZE;

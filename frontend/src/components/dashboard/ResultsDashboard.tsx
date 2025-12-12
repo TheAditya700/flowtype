@@ -7,14 +7,12 @@ import { Play } from 'lucide-react';
 // New Widgets
 import SpeedGraph from './SpeedGraph';
 import FlowRadar from './FlowRadar';
-import RolloverBreakdownWidget from './RolloverBreakdownWidget';
-import ErrorMetricsWidget from './ErrorMetricsWidget';
 import IkiHistogramWidget from './IkiHistogramWidget';
 import SessionStatsWidget from './SessionStatsWidget';
 import KeyboardHeatmap from './KeyboardHeatmap';
 import ReplayChunkStrip from './ReplayChunkStrip';
 import SkillBars from './SkillBars';
-import ConfidenceWidget from './ConfidenceWidget';
+import RolloverBreakdown from './RolloverBreakdown';
 
 interface ResultsDashboardProps {
   sessionResult: SessionResponse;
@@ -125,21 +123,44 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
           <KeyboardHeatmap charStats={sessionResult.heatmapData} />
         </div>
 
-        {/* --- IKI Histogram (Row 3, single col) --- */}
+        {/* --- Flow Radar (Row 3, single col, right of Keyboard Heatmap) --- */}
+        <div>
+            <FlowRadar 
+                metrics={{
+                    smoothness: sessionResult.smoothness,
+                    rollover: sessionResult.rollover,
+                    leftFluency: sessionResult.leftFluency,
+                    rightFluency: sessionResult.rightFluency,
+                    crossFluency: sessionResult.crossFluency
+                }}
+            />
+        </div>
+
+        {/* --- IKI Histogram (Row 4, single col) --- */}
         <div>
             <IkiHistogramWidget 
                 replayEvents={sessionResult.replayEvents}
             />
         </div>
 
-        {/* --- Session Stats (Row 4, full width) --- */}
+        {/* --- Rollover Breakdown (Row 4, col-span-2) --- */}
+        <div className="lg:col-span-2">
+            <RolloverBreakdown 
+                rolloverL2L={sessionResult.rolloverL2L}
+                rolloverR2R={sessionResult.rolloverR2R}
+                rolloverCross={sessionResult.rolloverCross}
+                rollover={sessionResult.rollover}
+            />
+        </div>
+
+        {/* --- Session Stats (Row 5, full width) --- */}
         <div className="lg:col-span-3">
             <SessionStatsWidget 
                 errors={sessionResult.errors}
                 rawWpm={sessionResult.rawWpm}
                 kspc={sessionResult.kspc}
                 avgChunkLength={sessionResult.avgChunkLength}
-                rollover={sessionResult.rollover}
+                ikiStdDev={sessionResult.avgIki}
                 smoothness={sessionResult.smoothness}
             />
         </div>
