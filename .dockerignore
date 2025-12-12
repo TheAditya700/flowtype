@@ -1,0 +1,52 @@
+# ----------------------------
+# Python
+# ----------------------------
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+*.egg-info/
+.pytest_cache/
+.env
+.env.*
+
+# Ignore local virtualenvs
+backend/venv/
+.venv/
+env/
+
+# ----------------------------
+# Frontend
+# ----------------------------
+frontend/node_modules/
+frontend/.vite/
+frontend/.next/
+# Do NOT ignore frontend/dist because the frontend-builder produces its own dist
+
+# ----------------------------
+# Backend Data (optional)
+# Only ignore heavy training files, not runtime data
+backend/data/tmp/
+backend/models/tmp/
+
+# ----------------------------
+# Git & IDE
+# ----------------------------
+.git/
+.github/
+.vscode/
+.idea/
+.DS_Store
+
+# ----------------------------
+# Docker
+# ----------------------------
+# DO NOT ignore Dockerfile or docker-compose.yml
+Dockerfile.dev
+Dockerfile.train
+
+# ----------------------------
+# Misc
+# ----------------------------
+*.swp
+*.swo
+*~

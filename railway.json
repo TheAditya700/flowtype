@@ -1,0 +1,19 @@
+{
+  "services": [
+    {
+      "key": "postgres",
+      "image": "postgres:15-alpine",
+      "plan": "starter",
+      "config": {
+        "POSTGRES_USER": "flowtype",
+        "POSTGRES_PASSWORD": "${{ secrets.POSTGRES_PASSWORD }}",
+        "POSTGRES_DB": "flowtype"
+      }
+    }
+  ],
+  "build": {
+    "builder": "dockerfile",
+    "dockerfilePath": "Dockerfile"
+  },
+  "start": "sh -c 'cd /app && uvicorn app.main:app --host 127.0.0.1 --port 8000 & caddy run --config /etc/caddy/Caddyfile'"
+}
