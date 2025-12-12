@@ -7,11 +7,8 @@ from . import config
 ENRICHED_WORDLIST_PATH = config.ENRICHED_WORDLIST_PATH
 BIGRAM_OUT = config.BIGRAM_PATH
 TRIGRAM_OUT = config.TRIGRAM_PATH
-
-# Fallbacks to match difficulty_features.py
-UNKNOWN_BIGRAM = -15.0
-UNKNOWN_TRIGRAM = -20.0
-
+UNKNOWN_BIGRAM = config.UNKNOWN_BIGRAM
+UNKNOWN_TRIGRAM = config.UNKNOWN_TRIGRAM
 
 def load_enhanced_wordlist():
     """

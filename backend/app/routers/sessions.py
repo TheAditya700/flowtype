@@ -190,7 +190,7 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
         db_snippets = db.query(Snippet).filter(Snippet.id.in_(snippet_ids)).all()
         snippet_map = {str(s.id): s for s in db_snippets}
         
-        # Calculate global smoothness proxies for reward calculation
+        # Calculate helpers for reward / analytics
         def safe_div(n, d, default=0.0):
             return n / d if d > 0 else default
             
@@ -201,10 +201,27 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
             var = (s['sum_sq'] / s['count']) - (mean ** 2)
             std = np.sqrt(max(0, var))
             return safe_div(std, mean)
-            
-        global_iki_cv = get_iki_cv('global')
-        total_intervals = extractor.spike_count + extractor.flow_intervals
-        global_spike_rate = safe_div(extractor.spike_count, total_intervals)
+
+        # Session-local IKI CV and spike rate
+        valid_session_events = [
+            e for e in events_dicts
+            if not e['isBackspace'] and e['isCorrect'] and len(e['key']) == 1
+        ]
+        valid_session_events = sorted(valid_session_events, key=lambda x: x['timestamp']) if len(valid_session_events) >= 2 else valid_session_events
+        session_ikis = []
+        session_spike_rate = 0.0
+        session_iki_cv = 0.0
+        if len(valid_session_events) >= 2:
+            for i in range(1, len(valid_session_events)):
+                session_ikis.append(valid_session_events[i]['timestamp'] - valid_session_events[i-1]['timestamp'])
+            if session_ikis:
+                median_iki = float(np.median(session_ikis)) if session_ikis else 0.0
+                spike_threshold = median_iki * 1.8 if median_iki > 0 else 300.0
+                spikes = sum(1 for iki in session_ikis if iki > spike_threshold)
+                session_spike_rate = safe_div(spikes, len(session_ikis))
+                mean_iki = float(np.mean(session_ikis))
+                std_iki = float(np.std(session_ikis))
+                session_iki_cv = safe_div(std_iki, mean_iki)
         
         for s_res in request.snippets:
             s_db = snippet_map.get(s_res.snippet_id)
@@ -212,8 +229,8 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
                 metrics_now = {
                     'accuracy': s_res.accuracy,
                     'wpm': s_res.wpm,
-                    'iki_cv': global_iki_cv,
-                    'spike_rate': global_spike_rate
+                    'iki_cv': session_iki_cv,
+                    'spike_rate': session_spike_rate
                 }
                 
                 # Reward: compare current metrics against PRE-SESSION EMA baseline
@@ -241,12 +258,10 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
         agent.save()
 
         # -----------------------------------------------------
-        # 3. Calculate Smoothness Score (needed for DB save)
+        # 3. Calculate Smoothness Score FROM CURRENT SESSION ONLY
         # -----------------------------------------------------
-        # Smoothness: Agent-style weighted formula (matching lints_agent.py)
-        # smoothness = 0.5 * (1 / (1 + iki_cv)) + 0.5 * (1 - spike_rate)
-        agent_smoothness_value = 0.5 * (1.0 / (1.0 + global_iki_cv)) + 0.5 * (1.0 - global_spike_rate)
-        # Convert to 0-100 scale for UI and ensure it's a Python float
+        # Reuse session_iki_cv and session_spike_rate derived above
+        agent_smoothness_value = 0.5 * (1.0 / (1.0 + session_iki_cv)) + 0.5 * (1.0 - session_spike_rate)
         smoothness_score = float(agent_smoothness_value * 100)
 
         # -----------------------------------------------------

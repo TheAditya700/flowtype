@@ -1,4 +1,0 @@
-faiss-cpu
-numpy
-wordfreq
-wordfreq

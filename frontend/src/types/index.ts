@@ -133,6 +133,29 @@ export interface AnalyticsRequest {
   accuracy: number;
 }
 
+export interface AnalyticsResponse {
+  wpm: number;
+  accuracy: number;
+  flow_score: number;
+}
+
+export interface UserCreate {
+  username: string;
+  password: string;
+}
+
+export interface Token {
+  access_token: string;
+  token_type: string;
+}
+
+export interface UserResponse {
+  id: string;
+  username: string;
+  is_anonymous: boolean;
+  created_at: string;
+}
+
 export interface SpeedPoint {
   time: number;
   wpm: number;

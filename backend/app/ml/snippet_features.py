@@ -192,10 +192,8 @@ def compute_difficulty_features(text: str) -> dict:
     # ---------------------------------------------------------
     # D. Flow / Directional Structure (4)
     # ---------------------------------------------------------
-    # Flow segment: Sequence of characters typed without direction reversal on the SAME hand, 
-    # OR simpler definition: Sequence of distinct fingers?
-    # Let's use: Sequence of strictly increasing or strictly decreasing finger indices on the SAME hand.
-    # Cross-hand breaks flow segment? Usually yes.
+    # Sequence of strictly increasing or strictly decreasing finger indices on the SAME hand.
+    # Cross-hand breaks flow segment.
     
     flow_segments_list = []
     current_flow_len = 1

@@ -9,3 +9,7 @@ BIGRAM_PATH = DATA_DIR / "bigram_freqs.json"
 TRIGRAM_PATH = DATA_DIR / "trigram_freqs.json"
 WORD_FEATURES_PATH = DATA_DIR / "word_features.json"
 SNIPPETS_PATH = DATA_DIR / "snippets.json"
+
+# Fallbacks to match difficulty_features.py
+UNKNOWN_BIGRAM = -15.0
+UNKNOWN_TRIGRAM = -20.0

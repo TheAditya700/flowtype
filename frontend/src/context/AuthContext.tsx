@@ -5,6 +5,7 @@ import { setUserId, clearAuthUserId } from '../utils/anonymousUser';
 
 interface AuthContextType {
   user: UserResponse | null;
+  setUser: (user: UserResponse | null) => void;
   loading: boolean;
   login: (credentials: UserCreate) => Promise<void>;
   register: (credentials: UserCreate) => Promise<void>;
@@ -80,7 +81,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, isAuthenticated }}>
+    <AuthContext.Provider value={{ user, setUser, loading, login, register, logout, isAuthenticated }}>
       {children}
     </AuthContext.Provider>
   );

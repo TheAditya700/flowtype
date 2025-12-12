@@ -1,35 +1,60 @@
 # ---------------------------------------------------
-# Inference / Runtime Dockerfile (v0.3.0 MVP)
+# Stage 1: Build environment (only used for building wheels)
+# ---------------------------------------------------
+FROM python:3.11-slim AS builder
+
+WORKDIR /app
+
+# Install system-level build deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy dependencies
+COPY requirements.txt .
+
+# Create venv to isolate packages
+RUN python -m venv /opt/venv
+
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Install Python deps into venv (wheels built here)
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
+
+
+# ---------------------------------------------------
+# Stage 2: Lightweight runtime image
 # ---------------------------------------------------
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
+# Install ONLY runtime system deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# 1. Install Base Dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy venv from builder stage
+COPY --from=builder /opt/venv /opt/venv
 
-# 2. Install ML Dependencies (FAISS, NumPy, wordfreq)
-COPY requirements-ml.txt .
-RUN pip install --no-cache-dir -r requirements-ml.txt
+ENV PATH="/opt/venv/bin:$PATH"
+ENV PYTHONUNBUFFERED=1
 
-# Copy application
+# Copy app code
 COPY . .
 
-# Ensure data directories exist (for FAISS index, snippet metadata)
-RUN mkdir -p data
+# Ensure FAISS/models directory exists
+RUN mkdir -p /app/data
 
 EXPOSE 8000
 
-# Health check
+# HEALTHCHECK is good
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
+# Production Uvicorn (no reload, more efficient)
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -29,7 +29,6 @@ def update_long_term_features(
         
     # Parse current state
     # Ensure dimensions match; if new vector is different size, reset (or handle gracefully)
-    # For now, assuming fixed dimension from UserFeatureExtractor
     ema_mean = np.array(current_state['ema_mean'], dtype=np.float64)
     if ema_mean.shape != new_vec.shape:
         # Fallback reset if dimension changed (e.g. code update)

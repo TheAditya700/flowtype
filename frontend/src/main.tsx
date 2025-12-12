@@ -10,7 +10,6 @@ import ChangeUsernamePage from './pages/ChangeUsernamePage.tsx';
 import ChangePasswordPage from './pages/ChangePasswordPage.tsx';
 import DeleteAccountPage from './pages/DeleteAccountPage.tsx';
 import './index.css'; // Tailwind CSS import
-import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider } from './context/AuthContext'; // Import AuthProvider
 import { SessionModeProvider, useSessionMode } from './context/SessionModeContext';
 import Header from './components/Header';
@@ -48,11 +47,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <AuthProvider> {/* Wrap with AuthProvider */}
       <SessionModeProvider>
-        <ThemeProvider>
-          <BrowserRouter>
-            <Root />
-          </BrowserRouter>
-        </ThemeProvider>
+        <BrowserRouter>
+          <Root />
+        </BrowserRouter>
       </SessionModeProvider>
     </AuthProvider>
   </React.StrictMode>,

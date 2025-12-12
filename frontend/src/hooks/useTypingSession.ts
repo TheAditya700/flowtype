@@ -20,7 +20,7 @@ const useTypingSession = (): TypingSessionHook => {
   const [liveDuration, setLiveDuration] = useState(0);
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: ReturnType<typeof setInterval>;
     if (sessionStartTime && !sessionEndTime) {
       interval = setInterval(() => {
         const now = Date.now();

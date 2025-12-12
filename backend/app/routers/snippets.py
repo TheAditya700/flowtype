@@ -104,15 +104,29 @@ def retrieve_snippets(
         exclude_ids.add(str(current_id))
         
     filtered_snippets = [s for s in candidates if str(s.get("id")) not in exclude_ids]
-    
-    # If we filtered everything, just use the top candidate
-    if not filtered_snippets and candidates:
-        filtered_snippets = candidates[:1]
 
-    # 6. Select Top Snippet
-    # Since LinTS (Thompson Sampling) already handles exploration in the query vector generation,
-    # we can greedily select the nearest neighbor to the query vector.
-    top_snippet_data = filtered_snippets[0]
+    if not filtered_snippets:
+        wider_k = 200
+        if hasattr(vector_store, "index") and getattr(vector_store.index, "ntotal", 0):
+            wider_k = min(wider_k, vector_store.index.ntotal)
+        wider = vector_store.search(
+            query_vector=np.array(query_vector, dtype=np.float32),
+            k=max(1, wider_k)
+        ) or []
+        filtered_snippets = [s for s in wider if str(s.get("id")) not in exclude_ids]
+
+    if not filtered_snippets:
+        raise HTTPException(status_code=404, detail="No new snippets available.")
+
+    distances = np.array([s.get("distance", 0.0) for s in filtered_snippets], dtype=np.float32)
+    if len(filtered_snippets) == 1:
+        top_snippet_data = filtered_snippets[0]
+    else:
+        weights = np.exp(-distances)
+        weight_sum = float(weights.sum())
+        probs = weights / weight_sum if weight_sum > 0 else np.full_like(weights, 1.0 / len(weights))
+        pick_idx = int(np.random.choice(len(filtered_snippets), p=probs))
+        top_snippet_data = filtered_snippets[pick_idx]
     
     top_snippet = {
         "id": top_snippet_data.get("id"), 

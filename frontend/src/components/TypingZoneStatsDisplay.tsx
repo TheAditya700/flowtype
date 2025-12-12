@@ -40,15 +40,15 @@ const TypingZoneStatsDisplay: React.FC<TypingZoneStatsDisplayProps> = ({ wpm, ac
     <div className="flex gap-8 text-xl text-subtle">
       <div>
         <span className="text-sm text-subtle mr-2">{getTimeLabel()}</span>
-        <span className="font-bold text-primary">{getDisplayTime()}</span>
+        <span className="font-bold text-blue-400">{getDisplayTime()}</span>
       </div>
       <div>
         <span className="text-sm text-subtle mr-2">wpm</span>
-        <span className="font-bold text-primary">{Math.round(wpm)}</span>
+        <span className="font-bold text-purple-400">{Math.round(wpm)}</span>
       </div>
       <div>
         <span className="text-sm text-subtle mr-2">acc</span>
-        <span className="font-bold text-success">{Math.round(accuracy)}%</span>
+        <span className="font-bold text-green-400">{Math.round(accuracy)}%</span>
       </div>
     </div>
   );

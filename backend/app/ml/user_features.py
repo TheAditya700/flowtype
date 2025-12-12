@@ -126,7 +126,7 @@ class UserFeatureExtractor:
             # Skip non-char keys for most stats, but count backspaces
             if e.get('isBackspace', False):
                 self.backspace_count += 1
-                consecutive_errors = 0 # Reset burst on backspace? Or continue? Usually backspace ends the "typing" of that error.
+                consecutive_errors = 0 
                 prev_event = None # Reset context on backspace to avoid noisy IKIs
                 continue
             
@@ -334,8 +334,6 @@ class UserFeatureExtractor:
         # --- A. ACCURACY (8) ---
         accuracy = 1.0 - safe_div(self.total_errors, self.total_presses)
         error_rate = safe_div(self.total_errors, self.total_presses)
-        # KSPC (KeyStrokes Per Character) - requires knowing "target" chars. 
-        # total_presses / (total_presses - backspaces). Assuming finalized text length approx = presses - backspaces.
         # Let's approximate KSPC as 1 + error_rate + backspace_rate roughly.
         kspc = safe_div(self.total_presses, (self.total_presses - self.backspace_count - self.total_errors), default=1.0)
         

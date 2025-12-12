@@ -138,11 +138,6 @@ class LinTSAgent:
         # q (16) = W (16x130) @ u (130)
         query_vector = W_sample @ user_state  # shape: (16,)
 
-        # You can optionally L2-normalize if your snippet embeddings are normalized
-        # norm = np.linalg.norm(query_vector)
-        # if norm > 0:
-        #     query_vector = query_vector / norm
-
         return query_vector.astype(np.float32).tolist()
 
     # ------------------------------------------------------------------
