@@ -35,10 +35,8 @@ RUN apt-get update && apt-get install -y \
 
 # Install Caddy (static binary)
 RUN curl -L "https://caddyserver.com/api/download?os=linux&arch=amd64" \
-        -o /tmp/caddy.tar.gz && \
-    tar -xzf /tmp/caddy.tar.gz -C /usr/bin caddy && \
-    chmod +x /usr/bin/caddy && \
-    rm -rf /tmp/caddy.tar.gz
+        -o /usr/bin/caddy && \
+    chmod +x /usr/bin/caddy
 
 # Copy Python packages from builder
 COPY --from=backend-builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
