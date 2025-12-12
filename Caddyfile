@@ -1,19 +1,16 @@
 :{$PORT} {
-    auto_https off
-
-    # API routes - proxy to backend
+    # API routes → FastAPI backend
     handle /api/* {
-        reverse_proxy 127.0.0.1:8000
+        reverse_proxy http://127.0.0.1:8000
     }
 
-    # Frontend static files with SPA fallback
+    # Static frontend
     handle {
         root * /srv
         try_files {path} /index.html
         file_server
     }
 
-    # Logging
     log {
         output stdout
         format console
