@@ -47,11 +47,11 @@ FROM caddy:2-alpine
 RUN apk add --no-cache python3 py3-pip dumb-init
 
 COPY Caddyfile /etc/caddy/Caddyfile
-
 COPY --from=frontend-builder /frontend/dist /srv
 
-COPY --from=backend-builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
-COPY --from=backend-builder /usr/local/bin /usr/local/bin
+COPY --from=backend-builder /usr/local /usr/local
+
+# Copy backend code
 COPY --from=backend-builder /app /app
 
 WORKDIR /app
