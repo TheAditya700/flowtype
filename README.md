@@ -34,9 +34,22 @@ Together, these works motivate FlowType’s focus on **interpretable timing-base
 - Full keystroke telemetry feeds dashboards (speed series, replay events, heatmaps) and keeps the model reward grounded in user behavior.
 
 ## Demo / screens
-![Typing Surface](screenshots/type.png)
-![Session Results](screenshots/results.png)
-![Stats Dashboard](screenshots/stats.png)
+<br>
+
+![Typing Surface](screenshots/type.png)  
+**Typing surface** — Adaptive snippet selection with real-time keystroke capture; every keydown/keyup feeds IKI, rollover, and chunking metrics used by the model.
+<br>
+<br>
+
+![Session Results](screenshots/results.png)  
+**Session results** — Post-session breakdown of WPM vs raw WPM, accuracy, smoothness, rollover, and flow metrics derived directly from keystroke timing.
+<br>
+<br>
+
+![Stats Dashboard](screenshots/stats.png)  
+**Stats dashboard** — Longitudinal view of speed, accuracy, and fluency trends with EMA smoothing, enabling users to see exactly how the model perceives their skill over time.
+<br>
+<br>
 
 ## What the system does
 - Serves adaptive typing snippets via FastAPI + FAISS, guided by a LinTS contextual bandit.
