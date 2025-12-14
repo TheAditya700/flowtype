@@ -27,6 +27,24 @@ FlowType’s metric design and adaptation loop are grounded in established resea
 
 Together, these works motivate FlowType’s focus on **interpretable timing-based signals and bounded, incremental adaptation**, rather than black-box sequence models.
 
+## Retrieval + decision architecture (two-tower + bandit)
+- Two-tower setup: snippet tower (PCA to 16-dim) and user tower (130-dim state: EMA, variance, prev snippet). The LinTS bandit samples a weight matrix to map the user state to a query vector in snippet space.
+- Retrieval: FAISS nearest neighbors on the sampled query vector, then light filtering (recent/current snippets) with a greedy pick. This separates representation learning from decision policy and keeps retrieval deterministic/debuggable.
+- Policy: The bandit learns which regions of snippet space to explore/exploit given the user embedding, effectively ranking snippets for the current motor-skill state.
+
+## Custom hierarchical reward / loss
+- Custom hierarchical reward (in `app/ml/lints_agent.py`) balances accuracy, smoothness (IKI CV + spike rate), and effective WPM. Deltas are taken against the user’s EMA baselines and clipped to avoid runaway updates.
+- Reward terms are layered: accuracy first, then accuracy × consistency, then accuracy × consistency × speed, scaled to keep gradients stable. This mirrors a task loss where correctness dominates, fluency refines, and speed is last-mile.
+- The shape of the reward encourages smoother, lower-variance typing before pushing raw speed, aligning with the motor-learning goal instead of pure WPM leaderboard chasing.
+
+Mathematically (using clipped deltas $dA, dC, dS$):
+$$
+R = \text{reward\_scale}\;\big[\;w_1 dA \;+
+\; w_2 (dA \cdot dC) \;+
+\; w_3 (dA \cdot dC \cdot dS)\;\big]
+$$
+where $dA = \Delta$accuracy, $dC = \Delta$consistency (smoothness), $dS = \Delta$effective WPM (all clipped), and defaults are $w_1=1.0, w_2=0.7, w_3=0.4$, \(\text{reward\_scale}=20\).
+
 
 ## Headlines
 - Metric-first typing surface: WPM, raw WPM, accuracy, smoothness (IKI CV + spike-rate), rollover, and per-hand fluency from every session.
@@ -48,6 +66,16 @@ Together, these works motivate FlowType’s focus on **interpretable timing-base
 
 ![Stats Dashboard](screenshots/stats.png)  
 **Stats dashboard** — Longitudinal view of speed, accuracy, and fluency trends with EMA smoothing, enabling users to see exactly how the model perceives their skill over time.
+<br>
+<br>
+
+![Leaderboard](screenshots/leaderboard.png)  
+**Leaderboard** — Mode-specific rankings with anonymized users supported; shows best WPMs tracked per timed mode.
+<br>
+<br>
+
+![Wiki](screenshots/wiki.png)  
+**Wiki** — Reference view with key bindings, modes, and guidance to help users interpret the metrics.
 <br>
 <br>
 

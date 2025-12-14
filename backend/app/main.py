@@ -6,15 +6,32 @@ from app.routers import health, snippets, sessions, users, auth, profile_merge
 from app.ml.vector_store import VectorStore
 import logging
 
+from contextlib import asynccontextmanager
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Initialize DB and load FAISS index
+    logger.info("Initializing database...")
+    Base.metadata.create_all(bind=engine)
+
+    logger.info("Loading FAISS index...")
+    app.state.vector_store = VectorStore()
+    logger.info("Startup complete!")
+    yield
+    # Shutdown logic (if any) goes here
+
 
 # Create FastAPI app
 app = FastAPI(
     title="FlowType API",
     description="Adaptive typing practice with snippet retrieval",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 # CORS
@@ -25,17 +42,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-# Startup: Initialize DB and load FAISS index
-@app.on_event("startup")
-async def startup_event():
-    logger.info("Initializing database...")
-    Base.metadata.create_all(bind=engine)
-
-    logger.info("Loading FAISS index...")
-    app.state.vector_store = VectorStore()
-    logger.info("Startup complete!")
 
 
 # Include routers

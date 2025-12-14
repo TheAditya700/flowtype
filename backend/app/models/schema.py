@@ -1,7 +1,7 @@
 # ------------------------------------------------------
 # schema.py  (Pydantic models for API requests/responses)
 # ------------------------------------------------------
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Dict
 import numpy as np
 
@@ -249,8 +249,7 @@ class UserResponse(BaseModel):
     id: str
     username: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ChangeUsername(BaseModel):
