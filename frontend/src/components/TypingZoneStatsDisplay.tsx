@@ -1,14 +1,20 @@
-import React from 'react';
+import React from "react";
 
 interface TypingZoneStatsDisplayProps {
   wpm: number;
   accuracy: number;
   time: number;
-  sessionMode: '15' | '30' | '60' | '120' | 'free';
+  sessionMode: "15" | "30" | "60" | "120" | "free";
   timeRemaining: number | null;
 }
 
-const TypingZoneStatsDisplay: React.FC<TypingZoneStatsDisplayProps> = ({ wpm, accuracy, time, sessionMode, timeRemaining }) => {
+const TypingZoneStatsDisplay: React.FC<TypingZoneStatsDisplayProps> = ({
+  wpm,
+  accuracy,
+  time,
+  sessionMode,
+  timeRemaining,
+}) => {
   const formatTime = (seconds: number) => {
     const s = Math.round(seconds);
     if (s < 60) return `${s}s`;
@@ -18,7 +24,7 @@ const TypingZoneStatsDisplay: React.FC<TypingZoneStatsDisplayProps> = ({ wpm, ac
   };
 
   const getDisplayTime = () => {
-    if (sessionMode !== 'free') {
+    if (sessionMode !== "free") {
       // Show countdown for timed modes
       if (timeRemaining !== null) {
         const remainingSeconds = Math.ceil(timeRemaining / 1000);
@@ -33,7 +39,7 @@ const TypingZoneStatsDisplay: React.FC<TypingZoneStatsDisplayProps> = ({ wpm, ac
   };
 
   const getTimeLabel = () => {
-    return sessionMode !== 'free' ? 'remaining' : 'time';
+    return sessionMode !== "free" ? "remaining" : "time";
   };
 
   return (

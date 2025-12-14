@@ -1,7 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
-import { KeystrokeEvent } from '../types';
+import { useState, useEffect, useRef } from "react";
+import { KeystrokeEvent } from "../types";
 
-const useWPMCalculation = (keystrokeEvents: KeystrokeEvent[], sessionDuration: number) => {
+const useWPMCalculation = (
+  keystrokeEvents: KeystrokeEvent[],
+  sessionDuration: number,
+) => {
   const latestWpm = useRef(0);
   const latestAccuracy = useRef(100);
 
@@ -19,8 +22,9 @@ const useWPMCalculation = (keystrokeEvents: KeystrokeEvent[], sessionDuration: n
     let correctChars = 0;
     let totalTypedChars = 0; // Includes correct and incorrect, excludes backspaces
 
-    keystrokeEvents.forEach(event => {
-      if (!event.isBackspace && event.key.length === 1) { // Only count actual typed characters
+    keystrokeEvents.forEach((event) => {
+      if (!event.isBackspace && event.key.length === 1) {
+        // Only count actual typed characters
         totalTypedChars++;
         if (event.isCorrect) {
           correctChars++;
@@ -30,15 +34,15 @@ const useWPMCalculation = (keystrokeEvents: KeystrokeEvent[], sessionDuration: n
 
     // WPM calculation: (characters / 5) / minutes
     const minutes = sessionDuration / 60;
-    let calculatedWPM = (totalTypedChars / 5) / minutes;
+    let calculatedWPM = totalTypedChars / 5 / minutes;
     if (isNaN(calculatedWPM) || !isFinite(calculatedWPM)) calculatedWPM = 0;
 
     // Accuracy calculation: (correct characters / total typed characters) * 100
-    const calculatedAccuracy = totalTypedChars === 0 ? 100 : (correctChars / totalTypedChars) * 100;
-    
+    const calculatedAccuracy =
+      totalTypedChars === 0 ? 100 : (correctChars / totalTypedChars) * 100;
+
     latestWpm.current = calculatedWPM;
     latestAccuracy.current = calculatedAccuracy;
-
   }, [keystrokeEvents, sessionDuration]);
 
   // Effect to update displayed WPM/Accuracy every second

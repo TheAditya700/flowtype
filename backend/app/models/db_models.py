@@ -1,8 +1,21 @@
 import uuid
-from sqlalchemy import Column, String, Integer, Float, DateTime, ForeignKey, Index, JSON, BigInteger, func, Boolean
+from sqlalchemy import (
+    Column,
+    String,
+    Integer,
+    Float,
+    DateTime,
+    ForeignKey,
+    Index,
+    JSON,
+    BigInteger,
+    func,
+    Boolean,
+)
 from sqlalchemy.sql import func
 from app.database import Base
 from sqlalchemy.orm import relationship
+
 
 # ------------------------------------------------------
 # db_models.py (rewritten for Stateful GRU + RL)
@@ -10,15 +23,19 @@ from sqlalchemy.orm import relationship
 class User(Base):
     __tablename__ = "users"
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    username = Column(String, unique=True, index=True, nullable=True) # Nullable to support anonymous users
-    hashed_password = Column(String, nullable=True) # Nullable for anonymous users
+    username = Column(
+        String, unique=True, index=True, nullable=True
+    )  # Nullable to support anonymous users
+    hashed_password = Column(String, nullable=True)  # Nullable for anonymous users
     created_at = Column(DateTime, default=func.now())
     last_active = Column(DateTime, default=func.now(), onupdate=func.now())
 
     # Anonymous user tracking
     is_anonymous = Column(Boolean, default=True)  # True if user hasn't registered yet
-    merged_into = Column(String(36), nullable=True)  # ID of authenticated user this profile was merged into
-    
+    merged_into = Column(
+        String(36), nullable=True
+    )  # ID of authenticated user this profile was merged into
+
     # Best WPM stats for various intervals (JSON: {"15": wpm, "30": wpm, ...})
     best_wpms = Column(JSON, default={"15": 0.0, "30": 0.0, "60": 0.0, "120": 0.0})
 
@@ -57,9 +74,7 @@ class Snippet(Base):
 
     created_at = Column(DateTime, default=func.now())
 
-    __table_args__ = (
-        Index('idx_difficulty', 'difficulty_score'),
-    )
+    __table_args__ = (Index("idx_difficulty", "difficulty_score"),)
 
 
 # -----------------------------------------
@@ -70,34 +85,34 @@ class TypingSession(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(String, nullable=True, index=True)
-    
+
     # Session metadata
     duration_seconds = Column(Float)
     created_at = Column(DateTime, server_default=func.now())
-    
+
     # User state at session time
     user_embedding = Column(JSON, nullable=True)  # 130-dim user state vector
-    
+
     # Snippets typed (list of snippet IDs in order)
     snippet_ids = Column(JSON, nullable=False, default=[])  # ["id1", "id2", ...]
     snippet_embeddings = Column(JSON, nullable=True)  # List of 16-dim embeddings
-    
+
     # Keystroke data (full list of keystroke events)
     keystroke_events = Column(JSON, nullable=False, default=[])
-    
+
     # Actual performance metrics
     actual_wpm = Column(Float)
     actual_accuracy = Column(Float)
     actual_consistency = Column(Float)  # smoothness score
-    
+
     # Predicted metrics (from LinTS agent at session start)
     predicted_wpm = Column(Float, nullable=True)
     predicted_accuracy = Column(Float, nullable=True)
     predicted_consistency = Column(Float, nullable=True)
-    
+
     # Additional stats
     errors = Column(Integer)
     raw_wpm = Column(Float)
-    
+
     # RL reward (for agent updates)
     reward = Column(Float, nullable=True)

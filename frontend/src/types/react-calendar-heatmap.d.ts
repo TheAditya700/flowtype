@@ -1,5 +1,5 @@
-declare module 'react-calendar-heatmap' {
-  import * as React from 'react';
+declare module "react-calendar-heatmap" {
+  import * as React from "react";
 
   export interface CalendarHeatmapValue {
     date: string | Date;
@@ -16,7 +16,10 @@ declare module 'react-calendar-heatmap' {
     tooltipDataAttrs?: any;
     gutterSize?: number;
     showWeekdayLabels?: boolean;
-    transformDayElement?: (element: React.ReactElement, value: CalendarHeatmapValue) => React.ReactElement;
+    transformDayElement?: (
+      element: React.ReactElement,
+      value: CalendarHeatmapValue,
+    ) => React.ReactElement;
   }
 
   export default class CalendarHeatmap extends React.Component<CalendarHeatmapProps> {}

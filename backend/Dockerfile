@@ -12,13 +12,9 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# 1. Install Base Dependencies
+# Install Base Dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-# 2. Install ML Dependencies (FAISS, NumPy, wordfreq)
-COPY requirements-ml.txt .
-RUN pip install --no-cache-dir -r requirements-ml.txt
 
 # Copy application
 COPY . .

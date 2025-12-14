@@ -4,6 +4,24 @@ export interface SnippetResponse {
   difficulty: number;
 }
 
+export interface UserCreate {
+  username: string;
+  password: string;
+}
+
+export interface Token {
+  access_token: string;
+  token_type?: string;
+}
+
+export interface UserResponse {
+  id: string;
+  username?: string;
+  is_anonymous?: boolean;
+  created_at?: string;
+  best_wpms?: Record<string, number>;
+}
+
 export interface SnippetRetrieveResponse {
   snippet: SnippetResponse;
   wpm_windows: Record<string, number>;
@@ -59,7 +77,7 @@ export interface SessionCreateRequest {
   difficultyLevel: number;
   snippets: SnippetResult[];
   user_state: UserState;
-  sessionMode?: '15' | '30' | '60' | '120' | 'free';
+  sessionMode?: "15" | "30" | "60" | "120" | "free";
   flowScore?: number;
   predicted_wpm?: number;
   predicted_accuracy?: number;
@@ -124,13 +142,18 @@ export interface LeaderboardEntry {
   user_id: string;
   username?: string;
   best_wpm: number;
-  mode: '15' | '30' | '60' | '120';
+  mode: "15" | "30" | "60" | "120";
 }
 
 export interface AnalyticsRequest {
   keystrokeData: KeystrokeEvent[];
   wpm: number;
   accuracy: number;
+}
+
+export interface AnalyticsResponse {
+  // Shape can be refined when analytics endpoint stabilizes
+  [key: string]: unknown;
 }
 
 export interface SpeedPoint {
@@ -155,35 +178,35 @@ export interface SessionResponse {
   session_id: string;
   reward: number;
   durationSeconds: number;
-  
+
   // Basic stats
   wpm: number;
   rawWpm: number;
   accuracy: number;
   errors: number;
-  
+
   // Flow metrics
   smoothness: number;
   rollover: number;
   leftFluency: number;
   rightFluency: number;
   crossFluency: number;
-  
+
   // Hand-specific rollover rates
   rolloverL2L: number;
   rolloverR2R: number;
   rolloverCross: number;
-  
+
   // Detailed stats
   avgIki: number;
   kspc: number;
   avgChunkLength: number;
   heatmapData: Record<string, { accuracy: number; speed: number }>;
-  
+
   // Time Series and Replay
   speedSeries: SpeedPoint[];
   replayEvents: ReplayEvent[];
-  
+
   // Snippet results
   snippets?: SnippetResult[];
 }

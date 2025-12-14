@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 import {
   LineChart,
   Line,
@@ -6,9 +6,9 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer
-} from 'recharts';
-import { SpeedPoint } from '../../types';
+  ResponsiveContainer,
+} from "recharts";
+import { SpeedPoint } from "../../types";
 
 interface SpeedGraphProps {
   data: SpeedPoint[];
@@ -21,38 +21,42 @@ const SpeedGraph: React.FC<SpeedGraphProps> = ({ data }) => {
       <ResponsiveContainer width="94%" height="90%">
         <LineChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.5} />
-          <XAxis 
-            dataKey="time" 
-            stroke="#9CA3AF" 
-            tick={{ fontSize: 12 }} 
+          <XAxis
+            dataKey="time"
+            stroke="#9CA3AF"
+            tick={{ fontSize: 12 }}
             tickFormatter={(val) => `${val}s`}
           />
-          <YAxis 
-            stroke="#9CA3AF" 
+          <YAxis
+            stroke="#9CA3AF"
             tick={{ fontSize: 12 }}
-            domain={['auto', 'auto']}
+            domain={["auto", "auto"]}
           />
-          <Tooltip 
-            contentStyle={{ backgroundColor: '#1F2937', borderColor: '#374151', color: '#F3F4F6' }}
-            itemStyle={{ color: '#F3F4F6' }}
-            formatter={(value: number) => [Math.round(value), 'WPM']}
+          <Tooltip
+            contentStyle={{
+              backgroundColor: "#1F2937",
+              borderColor: "#374151",
+              color: "#F3F4F6",
+            }}
+            itemStyle={{ color: "#F3F4F6" }}
+            formatter={(value: number) => [Math.round(value), "WPM"]}
             labelFormatter={(label) => `${label}s`}
           />
-          <Line 
-            type="monotone" 
-            dataKey="wpm" 
-            stroke="#3B82F6" 
-            strokeWidth={3} 
+          <Line
+            type="monotone"
+            dataKey="wpm"
+            stroke="#3B82F6"
+            strokeWidth={3}
             dot={false}
             activeDot={{ r: 6 }}
           />
-          <Line 
-            type="monotone" 
-            dataKey="rawWpm" 
-            stroke="#6B7280" 
-            strokeWidth={1} 
-            strokeDasharray="5 5" 
-            dot={false} 
+          <Line
+            type="monotone"
+            dataKey="rawWpm"
+            stroke="#6B7280"
+            strokeWidth={1}
+            strokeDasharray="5 5"
+            dot={false}
           />
         </LineChart>
       </ResponsiveContainer>

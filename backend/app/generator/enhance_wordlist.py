@@ -16,16 +16,9 @@ def enhance_wordlist():
         if freq <= 0:
             freq = 1.0
 
-        enhanced.append({
-            "word": w.lower(),
-            "zipf": round(freq, 4)
-        })
+        enhanced.append({"word": w.lower(), "zipf": round(freq, 4)})
 
-    out = {
-        "name": raw["name"],
-        "size": len(enhanced),
-        "words": enhanced
-    }
+    out = {"name": raw["name"], "size": len(enhanced), "words": enhanced}
 
     OUT_PATH.write_text(json.dumps(out, indent=2))
     print(f"Saved enriched wordlist → {OUT_PATH}")

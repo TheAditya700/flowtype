@@ -1,5 +1,5 @@
-import React from 'react';
-import AuthModal from '../components/AuthModal';
+import React from "react";
+import AuthModal from "../components/AuthModal";
 
 const AuthPage: React.FC = () => {
   return (

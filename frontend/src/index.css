@@ -13,7 +13,7 @@
   --container-bg: #1f2937;
 }
 
-[data-theme='tokyo-night'] {
+[data-theme="tokyo-night"] {
   --bg-color: #1a1b26;
   --text-color: #a9b1d6;
   --text-subtle: #565f89;
@@ -23,7 +23,7 @@
   --container-bg: #24283b;
 }
 
-[data-theme='catppuccin'] {
+[data-theme="catppuccin"] {
   --bg-color: #1e1e2e;
   --text-color: #cdd6f4;
   --text-subtle: #6c7086;
@@ -33,7 +33,7 @@
   --container-bg: #313244;
 }
 
-[data-theme='nord'] {
+[data-theme="nord"] {
   --bg-color: #2e3440;
   --text-color: #eceff4;
   --text-subtle: #4c566a;
@@ -43,7 +43,7 @@
   --container-bg: #3b4252;
 }
 
-[data-theme='gruvbox'] {
+[data-theme="gruvbox"] {
   --bg-color: #282828;
   --text-color: #ebdbb2;
   --text-subtle: #928374;
@@ -56,6 +56,8 @@
 body {
   background-color: var(--bg-color);
   color: var(--text-color);
-  font-family: 'JetBrains Mono', 'Roboto Mono', monospace;
-  transition: background-color 0.3s ease, color 0.3s ease;
+  font-family: "JetBrains Mono", "Roboto Mono", monospace;
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
 }

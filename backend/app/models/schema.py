@@ -37,10 +37,10 @@ class UserState(BaseModel):
 
     # Recent keystrokes (last ~50)
     recentKeystrokes: Optional[List[KeystrokeEvent]] = None
-    
+
     # History for filtering
     recentSnippetIds: Optional[List[str]] = None
-    
+
     # Timestamps for WPM calculation
     keystroke_timestamps: Optional[List[float]] = None
 
@@ -79,7 +79,7 @@ class SessionCreateRequest(BaseModel):
     # User tower state at session start
     user_state: UserState
     flowScore: Optional[float] = 0.0
-    
+
     # Predicted metrics from LinTS agent
     predicted_wpm: Optional[float] = None
     predicted_accuracy: Optional[float] = None
@@ -93,17 +93,20 @@ class SnippetBoundary(BaseModel):
     startTime: int
     endTime: int
 
+
 class AnalyticsRequest(BaseModel):
     keystrokeData: List[KeystrokeEvent]
     wpm: float
     accuracy: float
     snippetBoundaries: Optional[List[SnippetBoundary]] = None
 
+
 class SpeedPoint(BaseModel):
     time: float
     wpm: float
     rawWpm: float
     errors: int
+
 
 class ReplayEvent(BaseModel):
     char: str
@@ -113,40 +116,41 @@ class ReplayEvent(BaseModel):
     snippetIndex: Optional[int] = None
     isRollover: Optional[bool] = False
 
+
 class SessionResponse(BaseModel):
     # Session metadata
     session_id: str
     reward: float
     durationSeconds: float
-    
+
     # Basic stats
     wpm: float
     rawWpm: float
     accuracy: float
     errors: int
-    
+
     # Flow metrics
     smoothness: float
     rollover: float
     leftFluency: float
     rightFluency: float
     crossFluency: float
-    
+
     # Hand-specific rollover rates
     rolloverL2L: float
     rolloverR2R: float
     rolloverCross: float
-    
+
     # Detailed stats for widgets
     avgIki: float
     kspc: float
     avgChunkLength: float
     heatmapData: Dict[str, Dict[str, float]]
-    
+
     # Time Series and Replay
     speedSeries: List[SpeedPoint]
     replayEvents: List[ReplayEvent]
-    
+
     # Snippet results
     snippets: List[SnippetResult] = []
 
@@ -158,12 +162,14 @@ class SnippetRetrieveRequest(BaseModel):
     user_state: UserState
     current_snippet_id: Optional[str] = None
 
+
 class SnippetResponse(BaseModel):
     snippet: Optional[dict]
     wpm_windows: dict
     predicted_wpm: Optional[float] = None
     predicted_accuracy: Optional[float] = None
     predicted_consistency: Optional[float] = None
+
 
 # ------------------------------------------------------
 # User Stats (simple reporting)
@@ -196,7 +202,7 @@ class ActivityDay(BaseModel):
 
 class CharStat(BaseModel):
     accuracy: float  # 0-1
-    speed: float     # normalized 0-1 (relative frequency)
+    speed: float  # normalized 0-1 (relative frequency)
 
 
 class UserStatsDetail(BaseModel):
@@ -207,9 +213,10 @@ class UserStatsDetail(BaseModel):
     longest_streak: int
     char_heatmap: dict[str, CharStat] = {}
 
+
 class UserProfile(BaseModel):
     user_id: str
-    username: Optional[str] = None # Added username
+    username: Optional[str] = None  # Added username
     features: dict
     stats: UserStats
 
@@ -220,6 +227,7 @@ class LeaderboardEntry(BaseModel):
     best_wpm: float
     mode: str
 
+
 # ------------------------------------------------------
 # Authentication Schemas
 # ------------------------------------------------------
@@ -227,12 +235,15 @@ class UserCreate(BaseModel):
     username: str
     password: str
 
+
 class Token(BaseModel):
     access_token: str
     token_type: str
 
-class TokenData(BaseModel): # Used for JWT payload validation
+
+class TokenData(BaseModel):  # Used for JWT payload validation
     username: Optional[str] = None
+
 
 class UserResponse(BaseModel):
     id: str
@@ -241,12 +252,15 @@ class UserResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
 class ChangeUsername(BaseModel):
     new_username: str
+
 
 class ChangePassword(BaseModel):
     current_password: str
     new_password: str
+
 
 class DeleteAccount(BaseModel):
     password: str

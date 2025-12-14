@@ -1,39 +1,39 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { AlertCircle, ArrowLeft } from 'lucide-react';
-import { changePassword } from '../api/client';
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { AlertCircle, ArrowLeft } from "lucide-react";
+import { changePassword } from "../api/client";
 
 const ChangePasswordPage: React.FC = () => {
   const navigate = useNavigate();
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError] = useState('');
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
     setSuccess(false);
 
     if (!currentPassword || !newPassword || !confirmPassword) {
-      setError('All fields are required');
+      setError("All fields are required");
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setError('New passwords do not match');
+      setError("New passwords do not match");
       return;
     }
 
     if (newPassword.length < 6) {
-      setError('New password must be at least 6 characters');
+      setError("New password must be at least 6 characters");
       return;
     }
 
     if (newPassword === currentPassword) {
-      setError('New password must be different from current');
+      setError("New password must be different from current");
       return;
     }
 
@@ -41,9 +41,9 @@ const ChangePasswordPage: React.FC = () => {
     try {
       await changePassword(currentPassword, newPassword);
       setSuccess(true);
-      setTimeout(() => navigate('/'), 1500);
+      setTimeout(() => navigate("/"), 1500);
     } catch (err: any) {
-      setError(err.message || 'Failed to change password');
+      setError(err.message || "Failed to change password");
     } finally {
       setLoading(false);
     }
@@ -52,7 +52,7 @@ const ChangePasswordPage: React.FC = () => {
   return (
     <div className="w-full max-w-md mx-auto p-8 flex flex-col gap-6 min-h-[60vh]">
       <button
-        onClick={() => navigate('/')}
+        onClick={() => navigate("/")}
         className="flex items-center gap-2 text-subtle hover:text-text transition w-fit"
       >
         <ArrowLeft size={16} />
@@ -66,7 +66,9 @@ const ChangePasswordPage: React.FC = () => {
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-2">
-          <label className="text-sm font-semibold text-text">Current Password</label>
+          <label className="text-sm font-semibold text-text">
+            Current Password
+          </label>
           <input
             type="password"
             value={currentPassword}
@@ -78,7 +80,9 @@ const ChangePasswordPage: React.FC = () => {
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="text-sm font-semibold text-text">New Password</label>
+          <label className="text-sm font-semibold text-text">
+            New Password
+          </label>
           <input
             type="password"
             value={newPassword}
@@ -90,7 +94,9 @@ const ChangePasswordPage: React.FC = () => {
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="text-sm font-semibold text-text">Confirm Password</label>
+          <label className="text-sm font-semibold text-text">
+            Confirm Password
+          </label>
           <input
             type="password"
             value={confirmPassword}
@@ -119,7 +125,7 @@ const ChangePasswordPage: React.FC = () => {
           disabled={loading}
           className="bg-primary text-bg font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition disabled:opacity-50"
         >
-          {loading ? 'Updating...' : 'Update Password'}
+          {loading ? "Updating..." : "Update Password"}
         </button>
       </form>
     </div>

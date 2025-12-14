@@ -1,7 +1,7 @@
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4 } from "uuid";
 
-const ANON_USER_KEY = 'mt_anon_user_id';
-const AUTH_USER_KEY = 'mt_auth_user_id';
+const ANON_USER_KEY = "mt_anon_user_id";
+const AUTH_USER_KEY = "mt_auth_user_id";
 
 /**
  * Get or create an anonymous user ID for local storage
@@ -9,13 +9,13 @@ const AUTH_USER_KEY = 'mt_auth_user_id';
  */
 export function getAnonymousUserId(): string {
   let anonId = localStorage.getItem(ANON_USER_KEY);
-  
+
   if (!anonId) {
     anonId = uuidv4();
     localStorage.setItem(ANON_USER_KEY, anonId);
-    console.log('Generated new anonymous user ID:', anonId);
+    console.log("Generated new anonymous user ID:", anonId);
   }
-  
+
   return anonId;
 }
 

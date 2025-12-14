@@ -8,13 +8,15 @@ MODEL_PATH = "app/ml/lints_model.pkl"
 # ------------------------------------------------------------------
 # User feature indexing (within the 57-dim EMA vector)
 # ------------------------------------------------------------------
-IDX_ACCURACY = 0              # EMA of accuracy
-IDX_IKI_CV = 10               # Global IKI CV (Coefficient of Variation for Inter-Keystroke-Intervals)
-IDX_WPM_EFFECTIVE = 21        # EMA of effective WPM (wpm * accuracy)
-IDX_SPIKE_RATE = 27           # EMA of spike_rate (0..1)
+IDX_ACCURACY = 0  # EMA of accuracy
+IDX_IKI_CV = (
+    10  # Global IKI CV (Coefficient of Variation for Inter-Keystroke-Intervals)
+)
+IDX_WPM_EFFECTIVE = 21  # EMA of effective WPM (wpm * accuracy)
+IDX_SPIKE_RATE = 27  # EMA of spike_rate (0..1)
 
-USER_BASE_DIM = 57            # base user feature dimensionality
-SNIPPET_DIM = 16              # PCA snippet embedding dim
+USER_BASE_DIM = 57  # base user feature dimensionality
+SNIPPET_DIM = 16  # PCA snippet embedding dim
 
 # User state passed to the model is:
 #   [EMA(57) | STD(57) | PrevSnippet(16)] = 130
@@ -66,9 +68,7 @@ class LinTSAgent:
 
         # Diagonal precision for each weight
         self.W_precision = np.full(
-            (SNIPPET_DIM, USER_DIM),
-            self.lambda_prior,
-            dtype=np.float32
+            (SNIPPET_DIM, USER_DIM), self.lambda_prior, dtype=np.float32
         )
 
         self.version = 2  # incremented version
@@ -179,7 +179,7 @@ class LinTSAgent:
         M_old = self.W_mean
 
         # Update precision: P_new = P_old + X^2
-        P_new = P_old + (X ** 2)
+        P_new = P_old + (X**2)
 
         # Clip precision to avoid numerical blowup
         np.clip(P_new, self.lambda_prior, self.max_precision, out=P_new)
@@ -243,21 +243,21 @@ class LinTSAgent:
             # Fallback baselines
             base_acc = 0.90
             base_eff_wpm = 40.0
-            base_iki_cv = 0.25 # Neutral value for IKI CV
-            base_spike_rate = 0.20 # Neutral value for spike_rate
+            base_iki_cv = 0.25  # Neutral value for IKI CV
+            base_spike_rate = 0.20  # Neutral value for spike_rate
         else:
             base_acc = float(user_ema_vector[IDX_ACCURACY])
             base_eff_wpm = float(user_ema_vector[IDX_WPM_EFFECTIVE])
             base_iki_cv = float(user_ema_vector[IDX_IKI_CV])
             base_spike_rate = float(user_ema_vector[IDX_SPIKE_RATE])
-            
+
         base_smoothness = 0.5 * (1 / (1 + base_iki_cv)) + 0.5 * (1 - base_spike_rate)
 
         # 2. Extract current metrics
         now_acc = float(metrics_now.get("accuracy", 0.0))
         raw_wpm = float(metrics_now.get("wpm", 0.0))
-        now_iki_cv = float(metrics_now.get('iki_cv', 0.0))
-        now_spike_rate = float(metrics_now.get('spike_rate', 0.0))
+        now_iki_cv = float(metrics_now.get("iki_cv", 0.0))
+        now_spike_rate = float(metrics_now.get("spike_rate", 0.0))
 
         # Effective WPM = raw WPM * accuracy
         now_eff_wpm = raw_wpm * now_acc

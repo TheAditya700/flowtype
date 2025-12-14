@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 
 interface SessionStatsWidgetProps {
   errors: number;
@@ -14,12 +14,11 @@ const SessionStatsWidget: React.FC<SessionStatsWidgetProps> = ({
   rawWpm,
   kspc,
   avgChunkLength,
-  ikiStdDev
+  ikiStdDev,
 }) => {
   return (
     <div className="w-full bg-gray-900 rounded-xl p-6 border border-gray-800">
       <div className="grid grid-cols-5 gap-6">
-
         {/* Errors */}
         <div className="flex flex-col items-center justify-center">
           <div className="text-4xl font-bold font-mono text-red-400">
@@ -59,7 +58,6 @@ const SessionStatsWidget: React.FC<SessionStatsWidgetProps> = ({
           </div>
           <div className="text-xs text-gray-500 font-mono mt-1">IKI σ (ms)</div>
         </div>
-
       </div>
     </div>
   );

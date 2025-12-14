@@ -1,29 +1,29 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { AlertCircle, ArrowLeft } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
-import { changeUsername } from '../api/client';
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { AlertCircle, ArrowLeft } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
+import { changeUsername } from "../api/client";
 
 const ChangeUsernamePage: React.FC = () => {
   const navigate = useNavigate();
   const { user, setUser } = useAuth();
-  const [newUsername, setNewUsername] = useState('');
-  const [error, setError] = useState('');
+  const [newUsername, setNewUsername] = useState("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
     setSuccess(false);
 
     if (!newUsername.trim()) {
-      setError('Username cannot be empty');
+      setError("Username cannot be empty");
       return;
     }
 
     if (newUsername === user?.username) {
-      setError('New username must be different from current');
+      setError("New username must be different from current");
       return;
     }
 
@@ -32,9 +32,9 @@ const ChangeUsernamePage: React.FC = () => {
       const result = await changeUsername(newUsername);
       setUser(result);
       setSuccess(true);
-      setTimeout(() => navigate('/'), 1500);
+      setTimeout(() => navigate("/"), 1500);
     } catch (err: any) {
-      setError(err.message || 'Failed to change username');
+      setError(err.message || "Failed to change username");
     } finally {
       setLoading(false);
     }
@@ -43,7 +43,7 @@ const ChangeUsernamePage: React.FC = () => {
   return (
     <div className="w-full max-w-md mx-auto p-8 flex flex-col gap-6 min-h-[60vh]">
       <button
-        onClick={() => navigate('/')}
+        onClick={() => navigate("/")}
         className="flex items-center gap-2 text-subtle hover:text-text transition w-fit"
       >
         <ArrowLeft size={16} />
@@ -57,17 +57,21 @@ const ChangeUsernamePage: React.FC = () => {
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-2">
-          <label className="text-sm font-semibold text-text">Current Username</label>
+          <label className="text-sm font-semibold text-text">
+            Current Username
+          </label>
           <input
             type="text"
             disabled
-            value={user?.username || ''}
+            value={user?.username || ""}
             className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-text-subtle text-sm"
           />
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="text-sm font-semibold text-text">New Username</label>
+          <label className="text-sm font-semibold text-text">
+            New Username
+          </label>
           <input
             type="text"
             value={newUsername}
@@ -96,7 +100,7 @@ const ChangeUsernamePage: React.FC = () => {
           disabled={loading}
           className="bg-primary text-bg font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition disabled:opacity-50"
         >
-          {loading ? 'Updating...' : 'Update Username'}
+          {loading ? "Updating..." : "Update Username"}
         </button>
       </form>
     </div>

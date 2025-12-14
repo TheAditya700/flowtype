@@ -1,7 +1,21 @@
-import React, { createContext, useState, useEffect, useContext, ReactNode, useCallback } from 'react';
-import { loginUser, registerUser, fetchCurrentUser, removeToken, getToken, setToken } from '../api/client';
-import { UserCreate, UserResponse } from '../types';
-import { setUserId, clearAuthUserId } from '../utils/anonymousUser';
+import React, {
+  createContext,
+  useState,
+  useEffect,
+  useContext,
+  ReactNode,
+  useCallback,
+} from "react";
+import {
+  loginUser,
+  registerUser,
+  fetchCurrentUser,
+  removeToken,
+  getToken,
+  setToken,
+} from "../api/client";
+import { UserCreate, UserResponse } from "../types";
+import { setUserId, clearAuthUserId } from "../utils/anonymousUser";
 
 interface AuthContextType {
   user: UserResponse | null;
@@ -10,6 +24,7 @@ interface AuthContextType {
   register: (credentials: UserCreate) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
+  setUser: React.Dispatch<React.SetStateAction<UserResponse | null>>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -65,7 +80,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // After registration, directly log them in or ask them to login
       // For simplicity, let's auto-login after successful registration
       if (newUser) {
-        await login({ username: credentials.username, password: credentials.password });
+        await login({
+          username: credentials.username,
+          password: credentials.password,
+        });
       }
     } finally {
       setLoading(false);
@@ -80,7 +98,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, isAuthenticated }}>
+    <AuthContext.Provider
+      value={{ user, loading, login, register, logout, isAuthenticated, setUser }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -89,7 +109,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 };

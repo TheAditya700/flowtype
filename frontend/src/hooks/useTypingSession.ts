@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { KeystrokeEvent } from '../types';
+import { useState, useCallback, useEffect, useRef } from "react";
+import { KeystrokeEvent } from "../types";
 
 interface TypingSessionHook {
   sessionStartTime: number | null;
@@ -20,7 +20,7 @@ const useTypingSession = (): TypingSessionHook => {
   const [liveDuration, setLiveDuration] = useState(0);
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: ReturnType<typeof setInterval>;
     if (sessionStartTime && !sessionEndTime) {
       interval = setInterval(() => {
         const now = Date.now();
@@ -46,18 +46,22 @@ const useTypingSession = (): TypingSessionHook => {
   }, []);
 
   const addKeystrokeEvent = useCallback((event: KeystrokeEvent) => {
-    setKeystrokeEvents(prevEvents => [...prevEvents, event]);
+    setKeystrokeEvents((prevEvents) => [...prevEvents, event]);
   }, []);
 
-  const updateKeystrokeEvent = useCallback((id: string, updates: Partial<KeystrokeEvent>) => {
-    setKeystrokeEvents(prevEvents => 
-      prevEvents.map(ev => (ev.id === id ? { ...ev, ...updates } : ev))
-    );
-  }, []);
+  const updateKeystrokeEvent = useCallback(
+    (id: string, updates: Partial<KeystrokeEvent>) => {
+      setKeystrokeEvents((prevEvents) =>
+        prevEvents.map((ev) => (ev.id === id ? { ...ev, ...updates } : ev)),
+      );
+    },
+    [],
+  );
 
-  const sessionDuration = sessionStartTime && sessionEndTime
-    ? (sessionEndTime - sessionStartTime) / 1000
-    : liveDuration;
+  const sessionDuration =
+    sessionStartTime && sessionEndTime
+      ? (sessionEndTime - sessionStartTime) / 1000
+      : liveDuration;
 
   return {
     sessionStartTime,

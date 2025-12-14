@@ -80,9 +80,9 @@ def generate_word_feature_vectors(words):
 # ------------------------------------------------------------
 def generate_snippets(words, n=20000, min_len=5, max_len=8):
     snippets = []
-    
+
     attempts = 0
-    max_attempts = n * 5 # Prevent infinite loops
+    max_attempts = n * 5  # Prevent infinite loops
 
     while len(snippets) < n and attempts < max_attempts:
         attempts += 1
@@ -95,11 +95,13 @@ def generate_snippets(words, n=20000, min_len=5, max_len=8):
 
         feats = compute_difficulty_features(text)
 
-        snippets.append({
-            "words": ws,
-            "text": text,
-            "features": feats,
-        })
+        snippets.append(
+            {
+                "words": ws,
+                "text": text,
+                "features": feats,
+            }
+        )
 
     SNIPPETS_PATH.write_text(json.dumps(snippets, indent=2))
     return snippets

@@ -1,28 +1,28 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { AlertCircle, ArrowLeft } from 'lucide-react';
-import { deleteAccount } from '../api/client';
-import { useAuth } from '../context/AuthContext';
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { AlertCircle, ArrowLeft } from "lucide-react";
+import { deleteAccount } from "../api/client";
+import { useAuth } from "../context/AuthContext";
 
 const DeleteAccountPage: React.FC = () => {
   const navigate = useNavigate();
   const { logout } = useAuth();
-  const [password, setPassword] = useState('');
-  const [confirmText, setConfirmText] = useState('');
-  const [error, setError] = useState('');
+  const [password, setPassword] = useState("");
+  const [confirmText, setConfirmText] = useState("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
 
   const handleDelete = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
 
     if (!password) {
-      setError('Password is required');
+      setError("Password is required");
       return;
     }
 
-    if (confirmText !== 'delete my account') {
+    if (confirmText !== "delete my account") {
       setError('Please type "delete my account" to confirm');
       return;
     }
@@ -31,9 +31,9 @@ const DeleteAccountPage: React.FC = () => {
     try {
       await deleteAccount(password);
       await logout();
-      navigate('/');
+      navigate("/");
     } catch (err: any) {
-      setError(err.message || 'Failed to delete account');
+      setError(err.message || "Failed to delete account");
     } finally {
       setLoading(false);
     }
@@ -43,7 +43,7 @@ const DeleteAccountPage: React.FC = () => {
     return (
       <div className="w-full max-w-md mx-auto p-8 flex flex-col gap-6 min-h-[60vh]">
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate("/")}
           className="flex items-center gap-2 text-subtle hover:text-text transition w-fit"
         >
           <ArrowLeft size={16} />
@@ -57,7 +57,10 @@ const DeleteAccountPage: React.FC = () => {
 
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-400">
           <p className="font-semibold mb-1">Warning:</p>
-          <p>Deleting your account will permanently remove all your data, including sessions, stats, and leaderboard entries.</p>
+          <p>
+            Deleting your account will permanently remove all your data,
+            including sessions, stats, and leaderboard entries.
+          </p>
         </div>
 
         <button
@@ -124,10 +127,10 @@ const DeleteAccountPage: React.FC = () => {
 
         <button
           type="submit"
-          disabled={loading || confirmText !== 'delete my account'}
+          disabled={loading || confirmText !== "delete my account"}
           className="bg-red-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-red-700 transition disabled:opacity-50"
         >
-          {loading ? 'Deleting...' : 'Delete Account'}
+          {loading ? "Deleting..." : "Delete Account"}
         </button>
       </form>
     </div>

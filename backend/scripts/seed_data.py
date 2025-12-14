@@ -6,6 +6,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 def seed():
     """
     Seeds the database with sample data.
@@ -21,8 +22,9 @@ def seed():
         logger.info(f"Created sample user with ID: {user.id}")
     else:
         logger.info("User already exists, skipping seeding.")
-        
+
     session.close()
+
 
 if __name__ == "__main__":
     seed()
