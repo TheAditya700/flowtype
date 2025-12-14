@@ -12,3 +12,5 @@ python-jose[cryptography]
 faiss-cpu
 numpy
 wordfreq
+pytest
+httpx

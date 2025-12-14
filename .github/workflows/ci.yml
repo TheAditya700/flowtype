@@ -26,7 +26,7 @@ jobs:
           python -m pip install black
           black --check .
       - name: Test
-        run: pytest
+        run: python -m pytest
 
   frontend:
     runs-on: ubuntu-latest
