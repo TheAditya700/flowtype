@@ -8,6 +8,19 @@ The system is intentionally **interpretability-first**, drawing from research in
 
 This design choice follows prior work showing that fine-grained keystroke timing contains rich, stable structure for modeling skill, learning, and cognition.
 
+## Why FlowType?
+
+**Traditional typing trainers** (Monkeytype, TypeRacer) are static:
+- Same word lists for everyone
+- No adaptation to your weaknesses
+- WPM-only optimization (ignores typing quality)
+
+**FlowType adapts to you:**
+- Personalized snippet difficulty based on your skill profile
+- Optimizes for motor learning: accuracy → smoothness → speed
+- Exposes rich metrics (rollover, IKI variance, chunking) that reveal how you actually type
+- Contextual bandit learns which text patterns challenge you productively
+
 ## Research foundations
 
 FlowType’s metric design and adaptation loop are grounded in established research on typing dynamics, motor control, and keystroke timing:
@@ -32,26 +45,77 @@ Together, these works motivate FlowType’s focus on **interpretable timing-base
 - Retrieval: FAISS nearest neighbors on the sampled query vector, then light filtering (recent/current snippets) with a greedy pick. This separates representation learning from decision policy and keeps retrieval deterministic/debuggable.
 - Policy: The bandit learns which regions of snippet space to explore/exploit given the user embedding, effectively ranking snippets for the current motor-skill state.
 
+## Dimensionality control
+
+Snippet embeddings are projected to **16 dimensions via PCA** before FAISS retrieval and bandit decisions.
+
+**Explained variance (empirical):**
+- 8 components → ~74%
+- **16 components → ~97%**
+- 32 components → ~100% (marginal)
+
+Components beyond 16 contribute little signal and increase noise from rare n-grams.
+
+**Why 16D**
+The LinTS bandit learns a linear reward model over **user state × snippet embedding**. Higher dimensionality:
+- Increases parameter count and posterior variance
+- Requires more data to stabilize priors
+- Destabilizes early Thompson sampling
+
+Restricting to 16D:
+- Bounds the hypothesis space
+- Improves sample efficiency under sparse feedback
+- Stabilizes posterior estimates during exploration
+
+## User state
+
+Users are represented by an explicit **130-dimensional state vector** capturing skill, stability, and recent difficulty context.
+
+**State =**
+- **57D EMA** — long-term skill baseline (speed, accuracy, smoothness, rollover, fluency)
+- **57D stddev** — short-term variability (consistency / control)
+- **16D previous snippet embedding** — recent difficulty context
+
+**Why this structure**
+- EMA + variance separates *skill* from *stability*
+- Prevents overreaction to single sessions
+- Previous snippet embedding reduces difficulty oscillation and enables smooth curriculum transitions
+
 ## Custom hierarchical reward / loss
 - Custom hierarchical reward (in `app/ml/lints_agent.py`) balances accuracy, smoothness (IKI CV + spike rate), and effective WPM. Deltas are taken against the user’s EMA baselines and clipped to avoid runaway updates.
 - Reward terms are layered: accuracy first, then accuracy × consistency, then accuracy × consistency × speed, scaled to keep gradients stable. This mirrors a task loss where correctness dominates, fluency refines, and speed is last-mile.
 - The shape of the reward encourages smoother, lower-variance typing before pushing raw speed, aligning with the motor-learning goal instead of pure WPM leaderboard chasing.
 
-Mathematically (using clipped deltas $dA, dC, dS$):
-$$
-R = \text{reward\_scale}\;\big[\;w_1 dA \;+
-\; w_2 (dA \cdot dC) \;+
-\; w_3 (dA \cdot dC \cdot dS)\;\big]
-$$
-where $dA = \Delta$accuracy, $dC = \Delta$consistency (smoothness), $dS = \Delta$effective WPM (all clipped), and defaults are $w_1=1.0, w_2=0.7, w_3=0.4$, \(\text{reward\_scale}=20\).
+### Hierarchical Reward Function
 
+The bandit uses a hierarchical reward that prioritizes correctness and fluency before speed.
+```
+R = reward_scale * [ w1 * dA
+                   + w2 * (dA * dC)
+                   + w3 * (dA * dC * dS) ]
+```
+
+Where:
+- `dA` = change in accuracy
+- `dC` = change in consistency (smoothness)
+- `dS` = change in effective WPM
+
+All deltas are clipped against EMA baselines.
+
+This multiplicative structure creates soft gating: low accuracy nullifies smoothness/speed rewards, preventing the model from optimizing speed at the cost of correctness.
+
+**Defaults:**
+- `w1 = 1.0`
+- `w2 = 0.7`
+- `w3 = 0.4`
+- `reward_scale = 20`
 
 ## Headlines
 - Metric-first typing surface: WPM, raw WPM, accuracy, smoothness (IKI CV + spike-rate), rollover, and per-hand fluency from every session.
 - Contextual bandit (LinTS) steers snippet selection with a 16-dim embedding and a 130-dim user state (EMA + variance + previous snippet).
 - Full keystroke telemetry feeds dashboards (speed series, replay events, heatmaps) and keeps the model reward grounded in user behavior.
 
-## Demo / screens
+## Screenshots
 <br>
 
 ![Typing Surface](screenshots/type.png)  
@@ -118,7 +182,7 @@ where $dA = \Delta$accuracy, $dC = \Delta$consistency (smoothness), $dS = \Delta
 - Smoke tests: `cd backend && pytest` for retrieval and difficulty routines.
 - Health check: `GET /api/health` and FastAPI docs at `/docs`.
 
-## Observability (plan)
+## Observability
 - **What we log today**: session ingestion stats (WPM, accuracy), rollout metrics (IKI CV, spike rate, rollover), and agent rewards on update paths.
 - **What we would alert on**: high 5xx on `/sessions` or `/snippets/retrieve`, empty FAISS responses, reward collapse (nan/zero drift), spike-rate blowups, and long-tail latencies on snippet retrieval.
 - **Product analytics**: Umami snippet in `frontend/index.html` (optional, self-hosted) for basic page views; expand to event-level later.
