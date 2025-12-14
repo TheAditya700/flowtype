@@ -22,7 +22,23 @@ class TestHandMapping:
 
     def test_left_hand_keys(self):
         """Left-hand keys should map to 'L'."""
-        left_keys = ["q", "w", "e", "r", "t", "a", "s", "d", "f", "g", "z", "x", "c", "v", "b"]
+        left_keys = [
+            "q",
+            "w",
+            "e",
+            "r",
+            "t",
+            "a",
+            "s",
+            "d",
+            "f",
+            "g",
+            "z",
+            "x",
+            "c",
+            "v",
+            "b",
+        ]
         extractor = UserFeatureExtractor()
 
         for key in left_keys:
@@ -87,10 +103,12 @@ class TestSessionUpdate:
     def test_session_count_increments(self):
         """Session count should increment after each update."""
         extractor = UserFeatureExtractor()
-        session = self._make_session([
-            self._make_event("a", 100),
-            self._make_event("b", 200),
-        ])
+        session = self._make_session(
+            [
+                self._make_event("a", 100),
+                self._make_event("b", 200),
+            ]
+        )
 
         assert extractor.session_count == 0
         extractor.update_from_session(session)
@@ -123,11 +141,13 @@ class TestSessionUpdate:
     def test_backspace_counting(self):
         """Backspace events should be counted."""
         extractor = UserFeatureExtractor()
-        session = self._make_session([
-            self._make_event("a", 100),
-            self._make_event("Backspace", 150, is_backspace=True),
-            self._make_event("b", 200),
-        ])
+        session = self._make_session(
+            [
+                self._make_event("a", 100),
+                self._make_event("Backspace", 150, is_backspace=True),
+                self._make_event("b", 200),
+            ]
+        )
 
         extractor.update_from_session(session)
 
@@ -136,12 +156,14 @@ class TestSessionUpdate:
     def test_error_counting(self):
         """Incorrect keystrokes should be counted as errors."""
         extractor = UserFeatureExtractor()
-        session = self._make_session([
-            self._make_event("a", 100, is_correct=True),
-            self._make_event("b", 200, is_correct=False),
-            self._make_event("c", 300, is_correct=False),
-            self._make_event("d", 400, is_correct=True),
-        ])
+        session = self._make_session(
+            [
+                self._make_event("a", 100, is_correct=True),
+                self._make_event("b", 200, is_correct=False),
+                self._make_event("c", 300, is_correct=False),
+                self._make_event("d", 400, is_correct=True),
+            ]
+        )
 
         extractor.update_from_session(session)
 
@@ -151,13 +173,17 @@ class TestSessionUpdate:
     def test_burst_error_detection(self):
         """Consecutive errors should be detected as burst errors."""
         extractor = UserFeatureExtractor()
-        session = self._make_session([
-            self._make_event("a", 100, is_correct=True),
-            self._make_event("b", 200, is_correct=False),  # Error 1
-            self._make_event("c", 300, is_correct=False),  # Error 2 (burst)
-            self._make_event("d", 400, is_correct=False),  # Error 3 (burst continues)
-            self._make_event("e", 500, is_correct=True),
-        ])
+        session = self._make_session(
+            [
+                self._make_event("a", 100, is_correct=True),
+                self._make_event("b", 200, is_correct=False),  # Error 1
+                self._make_event("c", 300, is_correct=False),  # Error 2 (burst)
+                self._make_event(
+                    "d", 400, is_correct=False
+                ),  # Error 3 (burst continues)
+                self._make_event("e", 500, is_correct=True),
+            ]
+        )
 
         extractor.update_from_session(session)
 
@@ -167,12 +193,14 @@ class TestSessionUpdate:
     def test_letter_stats_tracking(self):
         """Per-letter error stats should be tracked."""
         extractor = UserFeatureExtractor()
-        session = self._make_session([
-            self._make_event("a", 100, is_correct=True),
-            self._make_event("a", 200, is_correct=False),
-            self._make_event("a", 300, is_correct=True),
-            self._make_event("b", 400, is_correct=True),
-        ])
+        session = self._make_session(
+            [
+                self._make_event("a", 100, is_correct=True),
+                self._make_event("a", 200, is_correct=False),
+                self._make_event("a", 300, is_correct=True),
+                self._make_event("b", 400, is_correct=True),
+            ]
+        )
 
         extractor.update_from_session(session)
 
@@ -184,11 +212,13 @@ class TestSessionUpdate:
     def test_iki_stats_global(self):
         """Global IKI (inter-keystroke interval) should be computed."""
         extractor = UserFeatureExtractor()
-        session = self._make_session([
-            self._make_event("a", 100),
-            self._make_event("b", 200),  # IKI = 100
-            self._make_event("c", 350),  # IKI = 150
-        ])
+        session = self._make_session(
+            [
+                self._make_event("a", 100),
+                self._make_event("b", 200),  # IKI = 100
+                self._make_event("c", 350),  # IKI = 150
+            ]
+        )
 
         extractor.update_from_session(session)
 
@@ -198,13 +228,15 @@ class TestSessionUpdate:
     def test_transition_type_classification(self):
         """Hand transitions should be classified correctly."""
         extractor = UserFeatureExtractor()
-        session = self._make_session([
-            self._make_event("a", 100),  # Left
-            self._make_event("s", 200),  # Left -> L2L
-            self._make_event("j", 300),  # Right -> cross
-            self._make_event("k", 400),  # Right -> R2R
-            self._make_event("k", 500),  # Same -> repeat
-        ])
+        session = self._make_session(
+            [
+                self._make_event("a", 100),  # Left
+                self._make_event("s", 200),  # Left -> L2L
+                self._make_event("j", 300),  # Right -> cross
+                self._make_event("k", 400),  # Right -> R2R
+                self._make_event("k", 500),  # Same -> repeat
+            ]
+        )
 
         extractor.update_from_session(session)
 
@@ -217,10 +249,14 @@ class TestSessionUpdate:
         """Rollover (keydown before previous keyup) should be detected."""
         extractor = UserFeatureExtractor()
         # Rollover: second key pressed before first key released
-        session = self._make_session([
-            self._make_event("a", 100, keyup_timestamp=200),
-            self._make_event("s", 150, keyup_timestamp=250),  # Pressed at 150, before 200
-        ])
+        session = self._make_session(
+            [
+                self._make_event("a", 100, keyup_timestamp=200),
+                self._make_event(
+                    "s", 150, keyup_timestamp=250
+                ),  # Pressed at 150, before 200
+            ]
+        )
 
         extractor.update_from_session(session)
 
@@ -231,13 +267,15 @@ class TestSessionUpdate:
         """Spikes (long pauses) should be detected for chunking."""
         extractor = UserFeatureExtractor()
         # Create session with one long pause (spike)
-        session = self._make_session([
-            self._make_event("a", 100),
-            self._make_event("b", 200),   # IKI = 100
-            self._make_event("c", 300),   # IKI = 100
-            self._make_event("d", 600),   # IKI = 300 (spike, > 1.8 * median)
-            self._make_event("e", 700),   # IKI = 100
-        ])
+        session = self._make_session(
+            [
+                self._make_event("a", 100),
+                self._make_event("b", 200),  # IKI = 100
+                self._make_event("c", 300),  # IKI = 100
+                self._make_event("d", 600),  # IKI = 300 (spike, > 1.8 * median)
+                self._make_event("e", 700),  # IKI = 100
+            ]
+        )
 
         extractor.update_from_session(session)
 
@@ -308,8 +346,12 @@ class TestFeatureVector:
 
         # Check that WPM values appear somewhere in the vector
         # The exact index depends on implementation, so check both values exist
-        assert any(abs(f - expected_wpm_mean) < 1.0 for f in features), "WPM mean not found"
-        assert any(abs(f - expected_eff_mean) < 1.0 for f in features), "Effective WPM mean not found"
+        assert any(
+            abs(f - expected_wpm_mean) < 1.0 for f in features
+        ), "WPM mean not found"
+        assert any(
+            abs(f - expected_eff_mean) < 1.0 for f in features
+        ), "Effective WPM mean not found"
 
     def test_feature_vector_all_finite(self):
         """All feature values should be finite."""

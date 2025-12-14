@@ -429,4 +429,6 @@ class TestLinTSAgentIntegration:
             dots.append(np.dot(q, preferred_direction))
 
         mean_dot = np.mean(dots)
-        assert mean_dot > 0, f"Agent should prefer rewarded direction, got mean dot={mean_dot}"
+        assert (
+            mean_dot > 0
+        ), f"Agent should prefer rewarded direction, got mean dot={mean_dot}"
