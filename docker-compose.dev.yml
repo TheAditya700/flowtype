@@ -1,12 +1,6 @@
-# Default configuration - points to dev environment
-# For other environments, use:
-#   docker-compose -f docker-compose.dev.yml up     (development)
-#   docker-compose -f docker-compose.stage.yml up   (staging)
-#   docker-compose -f docker-compose.prod.yml up    (production)
-
 services:
   # ----------------------------------------------------------------
-  # Development Environment (default)
+  # Development Environment
   # ----------------------------------------------------------------
   
   postgres_dev:

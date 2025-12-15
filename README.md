@@ -42,8 +42,8 @@ Together, these works motivate FlowType’s focus on **interpretable timing-base
 
 ## Retrieval + decision architecture (two-tower + bandit)
 - Two-tower setup: snippet tower (PCA to 16-dim) and user tower (130-dim state: EMA, variance, prev snippet). The LinTS bandit samples a weight matrix to map the user state to a query vector in snippet space.
-- Retrieval: FAISS nearest neighbors on the sampled query vector, then light filtering (recent/current snippets) with a greedy pick. This separates representation learning from decision policy and keeps retrieval deterministic/debuggable.
-- Policy: The bandit learns which regions of snippet space to explore/exploit given the user embedding, effectively ranking snippets for the current motor-skill state.
+- Retrieval: FAISS nearest neighbors on the sampled query vector, then light filtering (recent/current snippets) with probabilistic selection via softmax. Closer snippets get higher probability, but exploration is maintained through temperature control.
+- Policy: The bandit learns which regions of snippet space to explore/exploit given the user embedding, effectively ranking snippets for the current motor-skill state. Two layers of stochasticity: Thompson sampling in query generation + softmax sampling in retrieval.
 
 ## Dimensionality control
 
@@ -166,15 +166,15 @@ This multiplicative structure creates soft gating: low accuracy nullifies smooth
 ## How adaptation works
 - Build user context: load EMA/stddev from Postgres (or zeros), include previous snippet embedding if available.
 - Thompson sample bandit weights → query vector (16-dim) → FAISS search top-k.
-- Filter out current + recent snippet ids; fall back to top candidate if all filtered.
+- Filter out current + recent snippet ids; sample probabilistically from filtered candidates using softmax over distances (temperature=2.0).
 - Return chosen snippet plus predicted WPM/accuracy/consistency from the EMA vector.
 - After session: compute keystroke metrics, update EMA/variance, compute reward vs pre-session EMA, and update the bandit.
 
 ## Data & pipeline
 - Postgres stores users, snippets (with embeddings), sessions, and keystroke events.
 - Keystroke ingestion (`/api/sessions`) computes IKIs, spike rate, rollovers, transitions, and per-char stats via `UserFeatureExtractor`.
-- FAISS index build: `python -m scripts.build_faiss_index` from `backend/` (uses snippet embeddings already in DB).
-- Snippet/telemetry utilities live in `backend/scripts/` (seed data, init db, condense embeddings, etc.).
+- FAISS index build: `python scripts/build_index.py --env dev` from `backend/` (uses snippet embeddings already in DB; stage/prod also supported). For first-time setup, run `python scripts/bootstrap_env.py --env dev` to generate snippets, populate the DB, and build the index in one pass.
+- Snippet utilities live in `backend/scripts/` (seed data, init db, condense embeddings, etc.).
 
 ## Evaluation & correctness
 - Reward grounded in deltas vs EMA baselines to avoid runaway difficulty; clip deltas to keep updates bounded.
@@ -201,8 +201,8 @@ This multiplicative structure creates soft gating: low accuracy nullifies smooth
   python -m venv .venv && source .venv/bin/activate
   pip install -r requirements.txt
   alembic upgrade head
-  python -m scripts.init_db            
-  python -m scripts.build_faiss_index  
+  # One-shot bootstrap (generate → populate DB → build index)
+  python scripts/bootstrap_env.py --env dev
   uvicorn app.main:app --host 0.0.0.0 --port 8000
   ```
 - Frontend:
@@ -214,14 +214,21 @@ This multiplicative structure creates soft gating: low accuracy nullifies smooth
 - Environment knobs: `DATABASE_URL`, `SECRET_KEY`, `FAISS_INDEX_PATH`/`SNIPPET_METADATA_PATH` (see `app/config.py`).
 
 ## Running via Docker
-- Compose for dev: `docker-compose up --build` (services: Postgres, backend on :8000, frontend on :5173).
-- Trainer profile for offline scripts: `docker-compose --profile train up trainer`.
-- Data persistence: FAISS index/metadata mounted at `backend/data`.
+- **Dev** (default): `docker-compose up` → Frontend :5173, Backend :8000, DB :5432
+- **Stage**: `docker-compose -f docker-compose.stage.yml up` → Frontend :5174, Backend :8001, DB :5433
+- **Prod**: `docker-compose -f docker-compose.prod.yml up` → Frontend :5175, Backend :8002, DB :5434
+- Each environment has isolated database and FAISS indices in `backend/data/{dev|stage|prod}/`
+- First-time (fresh volume): after the stack is healthy, run migrations and bootstrap inside each backend container:
+  - Dev: `docker-compose exec backend_dev alembic upgrade head && python scripts/bootstrap_env.py --env dev`
+  - Stage: `docker-compose -f docker-compose.stage.yml exec backend_stage alembic upgrade head && python scripts/bootstrap_env.py --env stage`
+  - Prod: `docker-compose -f docker-compose.prod.yml exec backend_prod alembic upgrade head && python scripts/bootstrap_env.py --env prod`
 
-## Deployment and URLs
-- Backend base: `http://localhost:8000/api`; health at `/health`; docs at `/docs`.
-- Frontend dev: `http://localhost:5173`; set `VITE_API_URL` for other environments.
-- If serving statics elsewhere, proxy `/api` to the FastAPI service and keep `/docs` protected.
+## Deployment and promotion
+- See `docs/deployment.md` for full environment management guide
+- **Dev → Stage**: `python backend/scripts/promote_to_stage.py` (validates + copies artifacts)
+- **Stage → Prod**: `python backend/scripts/promote_to_prod.py` (requires manual confirmation)
+- **Build index**: `python backend/scripts/build_index.py --env {dev|stage|prod}`
+- Automatic backups created before each promotion; rollback documented in deployment guide
 
 ## Design principles
 - Measurement before magic: every adaptation step is tied to observable keystroke metrics.
@@ -232,7 +239,7 @@ This multiplicative structure creates soft gating: low accuracy nullifies smooth
 ## FAQ
 - **What happens if FAISS is empty?** We retry with a random vector; if still empty, return 404.
 - **Where is state stored?** User EMA/variance in Postgres; bandit weights in `app/ml/lints_model.pkl`; FAISS index/metadata in `backend/data`.
-- **How do I change snippet data?** Update rows in Postgres, then rerun `python -m scripts.build_faiss_index`.
+- **How do I change snippet data?** Update rows in Postgres, then rerun `python scripts/build_index.py --env dev`.
 - **How do I point the frontend elsewhere?** Set `VITE_API_URL` before `npm run dev/build`.
 
 ## Model & data lifecycle
@@ -303,12 +310,13 @@ This multiplicative structure creates soft gating: low accuracy nullifies smooth
 │   ├── requirements.txt
 │   └── scripts
 │       ├── analyze_data.py
-│       ├── build_faiss_index.py
+│       ├── bootstrap_env.py
+│       ├── build_index.py
 │       ├── cleanup_snippets.py
 │       ├── condense_snippet_embeddings.py
-│       ├── debug_difficulty.py
 │       ├── init_db.py
-│       ├── prepare_telemetry_batches.py
+│       ├── promote_to_prod.py
+│       ├── promote_to_stage.py
 │       └── seed_data.py
 ├── docker-compose.yml
 ├── docs

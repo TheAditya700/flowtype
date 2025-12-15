@@ -105,7 +105,7 @@ def retrieve_snippets(
             raise HTTPException(status_code=404, detail="No snippets available.")
 
     # 5. Filter out recently shown snippets
-    recent_ids = getattr(request.user_state, "recentSnippetIds", None) or []
+    recent_ids = request.user_state.recentSnippetIds or []
     current_id = request.current_snippet_id
     exclude_ids = set(str(sid) for sid in recent_ids)
     if current_id:
@@ -117,15 +117,27 @@ def retrieve_snippets(
     if not filtered_snippets and candidates:
         filtered_snippets = candidates[:1]
 
-    # 6. Select Top Snippet
-    # Since LinTS (Thompson Sampling) already handles exploration in the query vector generation,
-    # we can greedily select the nearest neighbor to the query vector.
-    top_snippet_data = filtered_snippets[0]
+    # 6. Select Snippet Probabilistically Based on Distance
+    # Convert L2 distances to probabilities using softmax with temperature
+    # Lower distance = higher probability
+    distances = np.array([s.get("distance", 0.0) for s in filtered_snippets])
+    
+    # Use negative distances (closer = better) and apply softmax with temperature
+    # Temperature controls exploration: lower temp = more exploitation, higher = more exploration
+    temperature = 2.0
+    neg_distances = -distances / temperature
+    
+    # Softmax to get probabilities
+    exp_scores = np.exp(neg_distances - np.max(neg_distances))  # Subtract max for numerical stability
+    probabilities = exp_scores / np.sum(exp_scores)
+    
+    # Sample according to probabilities
+    selected_idx = np.random.choice(len(filtered_snippets), p=probabilities)
+    top_snippet_data = filtered_snippets[selected_idx]
 
     top_snippet = {
         "id": top_snippet_data.get("id"),
         "words": top_snippet_data.get("words"),
-        "difficulty": top_snippet_data.get("difficulty"),
     }
 
     # 7. Compute rolling WPM

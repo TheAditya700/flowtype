@@ -1,7 +1,6 @@
 export interface SnippetResponse {
   id: string;
   words: string[];
-  difficulty: number;
 }
 
 export interface UserCreate {
@@ -53,7 +52,6 @@ export interface UserState {
 export interface Snippet {
   id: string;
   words: string[];
-  difficulty: number;
   expectedWpm: number;
 }
 
@@ -61,7 +59,6 @@ export interface SnippetResult {
   snippet_id: string;
   wpm: number;
   accuracy: number;
-  difficulty: number;
   started_at?: number;
   completed_at?: number;
   is_partial?: boolean;
@@ -74,7 +71,6 @@ export interface SessionCreateRequest {
   durationSeconds: number;
   wordsTyped: number;
   keystrokeData: KeystrokeEvent[];
-  difficultyLevel: number;
   snippets: SnippetResult[];
   user_state: UserState;
   sessionMode?: "15" | "30" | "60" | "120" | "free";
@@ -90,7 +86,6 @@ export interface SnippetLog {
   completed_at: string;
   wpm: number;
   accuracy: number;
-  difficulty: number;
   isPartial?: boolean;
   completedWords?: number;
   totalWords?: number;

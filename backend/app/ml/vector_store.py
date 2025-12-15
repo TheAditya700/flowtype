@@ -39,7 +39,7 @@ class VectorStore:
     def search(self, query_vector: np.ndarray, k: int = 50) -> list[dict]:
         """
         Search for similar snippets using FAISS (L2 distance) in shared embedding space.
-        Returns list of {snippet_id, words, difficulty, distance}
+        Returns list of {snippet_id, words, distance}
         """
         if not self.index or self.index.ntotal == 0:
             return []

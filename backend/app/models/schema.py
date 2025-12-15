@@ -27,7 +27,6 @@ class UserState(BaseModel):
     rollingAccuracy: float = 1.0
     backspaceRate: float = 0.0
     hesitationCount: int = 0
-    currentDifficulty: float = 5.0
 
     # Long-term stats (populated from DB or accumulated)
     overallAvgWpm: Optional[float] = 0.0
@@ -52,7 +51,6 @@ class SnippetResult(BaseModel):
     snippet_id: str
     wpm: float
     accuracy: float
-    difficulty: float
     started_at: Optional[int] = None
     completed_at: Optional[int] = None
     is_partial: Optional[bool] = False
@@ -68,7 +66,6 @@ class SessionCreateRequest(BaseModel):
     durationSeconds: float
     wordsTyped: int
     keystrokeData: List[KeystrokeEvent]
-    difficultyLevel: float
 
     # Session mode (timed: '15'|'30'|'60'|'120' or 'free')
     sessionMode: Optional[str] = None

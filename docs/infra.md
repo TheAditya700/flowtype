@@ -1,25 +1,70 @@
-# Infra notes (deploy + data)
+# Infrastructure
 
 ## Database migrations
-- Tooling: Alembic. Use `alembic upgrade head` during deploy to apply latest migrations.
-- Suggested deploy flow:
-  1) Build/publish images.
-  2) Run migrations against the target DB (`alembic upgrade head`).
-  3) Restart backend once migrations are applied.
-- For local/dev: `cd backend && alembic upgrade head`.
+```bash
+# Apply migrations (Alembic)
+docker-compose exec backend_{env} alembic upgrade head
 
-## FAISS index
-- When to rebuild: after changing snippet embeddings (adding/removing/updating snippets or changing embedding pipeline).
-- How to rebuild: from `backend/` run `python -m scripts.build_faiss_index`.
-- Runtime location: `backend/data/faiss_index.bin` and `backend/data/snippet_metadata.json`. Mount or bake these into the image.
-- Config knobs: `FAISS_INDEX_PATH`, `SNIPPET_METADATA_PATH` (see `app/config.py`). Ensure the runtime paths match the mounted files.
+# Local
+cd backend && alembic upgrade head
+```
 
-## Bandit state
-- Stored at `backend/app/ml/lints_model.pkl`. Keep it if you want to preserve explore/exploit state across deploys; reset it to cold-start.
+## Multi-environment setup
+- **Dev**: DB :5432, Backend :8000, Frontend :5173
+- **Stage**: DB :5433, Backend :8001, Frontend :5174
+- **Prod**: DB :5434, Backend :8002, Frontend :5175
 
-## Deploy checklist (minimal)
-- Set env: `DATABASE_URL`, `SECRET_KEY`, `FAISS_INDEX_PATH`, `SNIPPET_METADATA_PATH`.
-- Run migrations: `alembic upgrade head`.
-- Ensure FAISS files are present (either baked or mounted); rebuild if snippet embeddings changed.
-- Start backend: `uvicorn app.main:app --host 0.0.0.0 --port 8000`.
-- Health checks: `GET /api/health`; API docs at `/docs`.
+Each env has:
+- Isolated Postgres container
+- Separate FAISS index in `data/{dev|stage|prod}/`
+- Environment-specific `.env.{dev|stage|prod}`
+
+## FAISS index management
+```bash
+# Build for specific env
+python scripts/build_index.py --env {dev|stage|prod}
+
+# Paths per env
+data/dev/faiss_index.bin + snippet_metadata.json
+data/stage/faiss_index.bin + snippet_metadata.json
+data/prod/faiss_index.bin + snippet_metadata.json
+```
+
+## Config knobs
+- `ENV`: dev | stage | prod
+- `DATABASE_URL`: postgres connection string
+- `SECRET_KEY`: JWT signing key (rotate in prod)
+- `FAISS_INDEX_PATH`: path to FAISS index
+- `SNIPPET_METADATA_PATH`: path to snippet metadata
+
+## Docker
+```bash
+# Start environments
+docker-compose up                                   # dev
+docker-compose -f docker-compose.stage.yml up      # stage
+docker-compose -f docker-compose.prod.yml up -d    # prod (detached)
+
+# First-time bootstrap (fresh volumes)
+docker-compose exec backend_dev alembic upgrade head && docker-compose exec backend_dev python scripts/bootstrap_env.py --env dev
+docker-compose -f docker-compose.stage.yml exec backend_stage alembic upgrade head && docker-compose -f docker-compose.stage.yml exec backend_stage python scripts/bootstrap_env.py --env stage
+docker-compose -f docker-compose.prod.yml exec backend_prod alembic upgrade head && docker-compose -f docker-compose.prod.yml exec backend_prod python scripts/bootstrap_env.py --env prod
+
+# Logs
+docker logs -f flowtype_backend_{env}
+
+# Database access
+docker-compose exec postgres_{env} psql -U flowtype_{env}
+```
+
+## Health checks
+```bash
+curl http://localhost:8000/health  # dev
+curl http://localhost:8001/health  # stage
+curl http://localhost:8002/health  # prod
+```
+
+## Secrets (prod)
+- Rotate `SECRET_KEY` regularly
+- Use secrets manager (AWS Secrets Manager, Vault)
+- Never commit `.env.prod`
+- Database SSL in production

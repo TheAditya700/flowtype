@@ -1,0 +1,57 @@
+services:
+  # ----------------------------------------------------------------
+  # Staging Environment
+  # ----------------------------------------------------------------
+  
+  postgres_stage:
+    image: postgres:15-alpine
+    container_name: flowtype_postgres_stage
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_USER=flowtype_stage
+      - POSTGRES_PASSWORD=flowtype_stage
+      - POSTGRES_DB=flowtype_stage
+    volumes:
+      - pg_data_stage:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flowtype_stage"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend_stage:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: flowtype_backend_stage
+    ports:
+      - "8001:8000"
+    env_file:
+      - ./backend/.env.stage
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend:/app
+      - ./backend/data:/app/data
+    depends_on:
+      postgres_stage:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend_stage:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: flowtype_frontend_stage
+    ports:
+      - "5174:5173"
+    environment:
+      - VITE_API_URL=http://localhost:8001/api
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm run dev -- --host
+
+volumes:
+  pg_data_stage:

@@ -2,8 +2,8 @@
 """
 Prepare training batches from raw telemetry.
 
-This script reads raw telemetry from `telemetry_snippet_raw`, extracts features,
-and produces training examples. Output is written to `data/training_batches.json` or CSV.
+Reads `TelemetrySnippetRaw` rows; output to `data/training_batches.{json|csv}`.
+Assumes the telemetry table is populated (may be empty in fresh dev DBs).
 
 Usage:
     python scripts/prepare_telemetry_batches.py [--output-format json|csv]

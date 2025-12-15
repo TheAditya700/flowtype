@@ -1,34 +1,57 @@
 # Model & Data Lifecycle
 
-This document describes how snippet embeddings, the FAISS index, and the LinTS bandit state are produced, refreshed, and rolled back.
-
 ## Components
-- **Snippet embeddings**: Stored in Postgres (`snippets.embedding` and `snippets.processed_embedding`).
-- **FAISS index + metadata**: On-disk at `backend/data/faiss_index.bin` and `backend/data/snippet_metadata.json`.
-- **Bandit weights**: Thompson Sampling weights persisted at `backend/app/ml/lints_model.pkl`.
+- **Snippet embeddings**: 16-dim PCA in Postgres (`snippets.processed_embedding`)
+- **FAISS index + metadata**: `data/{dev|stage|prod}/faiss_index.bin` + `snippet_metadata.json`
+- **Bandit weights**: `app/ml/lints_model.pkl` (Thompson Sampling posteriors)
 
-## Build & refresh flows
-- **Initial seed**: Load snippets into Postgres (via seed/import), compute embeddings (offline script), then build FAISS.
-- **FAISS rebuild**: Run from `backend/`: `python -m scripts.build_faiss_index`. This reads snippet embeddings from the DB and writes the index + metadata to `backend/data/`.
-- **Bandit state**: Persisted automatically on update; stored locally at `app/ml/lints_model.pkl`. Back up this file if you want to preserve learned behavior across deploys.
-- **Cold start**: If no bandit weights are present, a fresh LinTS model is initialized with neutral priors; user EMAs default to neutral baselines.
+## Build flows
+```bash
+# Seed snippets → DB, compute embeddings
+python -m scripts.init_db
+python -m scripts.seed_data
+
+# Build FAISS for specific env
+python scripts/build_index.py --env dev
+```
 
 ## When to rebuild FAISS
-- After adding, editing, or deleting snippet embeddings in Postgres.
-- After changing the embedding model or PCA dimensions.
-- After bulk data cleanup that invalidates existing IDs.
+- Snippet embeddings added/changed/deleted
+- PCA model updated (re-run embedding pipeline)
+- Bulk cleanup invalidates existing IDs
 
-## Deployment guidance
-- Ship `backend/data/faiss_index.bin` and `backend/data/snippet_metadata.json` with the image, or mount a volume to provide them at runtime.
-- Ensure `FAISS_INDEX_PATH` and `SNIPPET_METADATA_PATH` point to the mounted files (see `app/config.py`).
-- Back up `app/ml/lints_model.pkl` if you want to keep explore/exploit state between releases.
+## Promotion
+```bash
+# Dev → Stage (validates + backs up)
+python scripts/promote_to_stage.py
 
-## Rollback strategy
-- **FAISS**: Keep the previous `faiss_index.bin` + metadata; if a rebuild is bad (empty index, wrong dim), swap back the prior files and restart the service.
-- **Bandit**: Keep a copy of the previous `lints_model.pkl`; if rewards go off (reward collapse, over-exploitation), restore the last known-good weights.
+# Stage → Prod (requires confirmation)
+python scripts/promote_to_prod.py
+```
+
+**Validation on promotion:**
+- FAISS loads, vector count matches metadata count
+- Metadata has required fields (id, words, difficulty)
+- Auto-backup to `{env}/backup/` before overwrite
+
+## Rollback
+```bash
+# Restore from backup
+cd backend/data/{stage|prod}
+cp backup/faiss_index.bin.bak faiss_index.bin
+cp backup/snippet_metadata.json.bak snippet_metadata.json
+
+# Restart service
+docker-compose -f docker-compose.{env}.yml restart backend_{env}
+```
+
+## Bandit state
+- Auto-persisted to `lints_model.pkl` on every update
+- Cold start: neutral priors if missing
+- Back up before major changes to preserve explore/exploit balance
 
 ## Validation checklist
-- FAISS index shape matches embedding dimension (default 16).
-- Sample retrieval works: `POST /api/snippets/retrieve` returns non-empty results.
-- Bandit reward and smoothness metrics are finite after a session.
-- No schema drift: embeddings exist for all active snippets.
+- FAISS index dimension = 16
+- `POST /api/snippets/retrieve` returns results
+- Rewards finite after session (no NaN/inf)
+- All active snippets have embeddings

@@ -7,7 +7,6 @@ import { KeystrokeEvent } from "../types";
 interface SnippetItem {
   id: string;
   words: string[];
-  difficulty: number;
 }
 
 interface SnippetStats {

@@ -1,3 +1,9 @@
+"""Legacy diagnostics for session/snippet usage.
+
+Tables required: TypingSession, SnippetUsage, Snippet, User. Run against a live DB.
+Use `build_index.py` for FAISS builds; this script is only for quick sanity checks.
+"""
+
 import sys
 import os
 from sqlalchemy import func

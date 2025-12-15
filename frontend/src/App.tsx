@@ -9,7 +9,7 @@ import {
   SnippetResult,
   SessionResponse,
 } from "./types"; // Import SessionResponse
-import { v4 as uuidv4 } from "uuid";
+
 import { getUserId } from "./utils/anonymousUser";
 
 import TypingZoneStatsDisplay from "./components/TypingZoneStatsDisplay";
@@ -22,7 +22,6 @@ import ResultsDashboard from "./components/dashboard/ResultsDashboard";
 interface QueuedSnippet {
   id: string;
   words: string[];
-  difficulty: number;
 }
 
 function App() {
@@ -192,8 +191,6 @@ function App() {
     const currentSnippet = snippetQueue[0];
     if (!currentSnippet) return;
 
-    const safeDifficulty = currentSnippet.difficulty ?? 5.0;
-
     // Create log (timestamps come from keystroke events)
     const log: SnippetLog = {
       snippet_id: currentSnippet.id,
@@ -206,7 +203,6 @@ function App() {
       ).toISOString(),
       wpm: 0, // Will be calculated in backend
       accuracy: 0, // Will be calculated in backend
-      difficulty: safeDifficulty,
       isPartial: stats.isPartial,
       completedWords: stats.completedWords,
       totalWords: stats.totalWords,
@@ -321,7 +317,6 @@ function App() {
       snippet_id: log.snippet_id,
       wpm: 0, // Backend will recalculate
       accuracy: 0, // Backend will recalculate
-      difficulty: log.difficulty,
       started_at: new Date(log.started_at).getTime(),
       completed_at: new Date(log.completed_at).getTime(),
       is_partial: log.isPartial,
@@ -334,7 +329,6 @@ function App() {
       durationSeconds: duration_seconds,
       wordsTyped: sessionSummary.totalWords,
       keystrokeData: keystrokesToSave,
-      difficultyLevel: allLogs.length > 0 ? allLogs[0].difficulty : 5.0,
       snippets: snippetResults,
       user_state: userState,
       sessionMode: liveStats.sessionMode,

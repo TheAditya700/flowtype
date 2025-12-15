@@ -12,7 +12,7 @@ Covers:
 
 import numpy as np
 import pytest
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from app.ml.user_features import UserFeatureExtractor, KEY_HAND_MAP
 
@@ -89,7 +89,7 @@ class TestSessionUpdate:
         timestamp: int,
         is_correct: bool = True,
         is_backspace: bool = False,
-        keyup_timestamp: int = None,
+        keyup_timestamp: Optional[int] = None,
     ) -> Dict:
         """Helper to create keystroke event."""
         return {

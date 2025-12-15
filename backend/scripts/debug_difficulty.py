@@ -1,3 +1,8 @@
+"""Quick diagnostic for snippet difficulty.
+
+Note: Uses a hardcoded snippet ID; adjust before running. Legacy helper only.
+"""
+
 import sys
 import os
 from sqlalchemy.orm import sessionmaker

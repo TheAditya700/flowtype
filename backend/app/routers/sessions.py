@@ -142,7 +142,6 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
             "keystroke_events": events_dicts,
             "wpm": calculated_wpm,
             "accuracy": calculated_accuracy,
-            "snippet_difficulty": request.difficultyLevel,
             "completed": True,
             "quit_progress": 1.0,
         }

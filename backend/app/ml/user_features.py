@@ -515,7 +515,7 @@ class UserFeatureExtractor:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict) -> "UserFeatureExtractor":
+    def from_dict(cls, data: Optional[Dict]) -> "UserFeatureExtractor":
         """Deserialize state."""
         e = cls()
         if not data:

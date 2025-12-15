@@ -1,0 +1,55 @@
+services:
+  # ----------------------------------------------------------------
+  # Production Environment
+  # ----------------------------------------------------------------
+  
+  postgres_prod:
+    image: postgres:15-alpine
+    container_name: flowtype_postgres_prod
+    ports:
+      - "5434:5432"
+    environment:
+      - POSTGRES_USER=flowtype_prod
+      - POSTGRES_PASSWORD=flowtype_prod  # Change in actual production!
+      - POSTGRES_DB=flowtype_prod
+    volumes:
+      - pg_data_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flowtype_prod"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  backend_prod:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: flowtype_backend_prod
+    ports:
+      - "8002:8000"
+    env_file:
+      - ./backend/.env.prod
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend/data:/app/data  # Read-only for data, no code mount
+    depends_on:
+      postgres_prod:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+    restart: unless-stopped
+
+  frontend_prod:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile  # Production build
+    container_name: flowtype_frontend_prod
+    ports:
+      - "5175:80"
+    environment:
+      - VITE_API_URL=http://localhost:8002/api
+    restart: unless-stopped
+
+volumes:
+  pg_data_prod:
