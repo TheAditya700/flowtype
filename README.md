@@ -297,29 +297,48 @@ This multiplicative structure creates soft gating: low accuracy nullifies smooth
 │   │       ├── metrics.py
 │   │       └── preprocessing.py
 │   ├── data
-│   │   ├── bigram_freqs.json
-│   │   ├── english_10k.json
-│   │   ├── english_10k_enriched.json
-│   │   ├── faiss_index.bin
-│   │   ├── snippet_metadata.json
-│   │   ├── snippets.json
-│   │   ├── trigram_freqs.json
-│   │   └── word_features.json
+│   │   ├── dev
+│   │   │   ├── faiss_index.bin
+│   │   │   └── snippet_metadata.json
+│   │   ├── offline
+│   │   │   ├── bigram_freqs.json
+│   │   │   ├── english_10k.json
+│   │   │   ├── english_10k_enriched.json
+│   │   │   ├── snippet_metadata.json
+│   │   │   ├── snippets.json
+│   │   │   ├── trigram_freqs.json
+│   │   │   └── word_features.json
+│   │   ├── prod
+│   │   └── stage
 │   ├── Dockerfile
 │   ├── Dockerfile.train
 │   ├── requirements.txt
-│   └── scripts
-│       ├── analyze_data.py
-│       ├── bootstrap_env.py
-│       ├── build_index.py
-│       ├── cleanup_snippets.py
-│       ├── condense_snippet_embeddings.py
-│       ├── init_db.py
-│       ├── promote_to_prod.py
-│       ├── promote_to_stage.py
-│       └── seed_data.py
+│   ├── scripts
+│   │   ├── analyze_data.py
+│   │   ├── bootstrap_env.py
+│   │   ├── build_faiss_index.py
+│   │   ├── build_index.py
+│   │   ├── cleanup_snippets.py
+│   │   ├── condense_snippet_embeddings.py
+│   │   ├── debug_difficulty.py
+│   │   ├── init_db.py
+│   │   ├── prepare_telemetry_batches.py
+│   │   ├── promote_to_prod.py
+│   │   ├── promote_to_stage.py
+│   │   └── seed_data.py
+│   └── tests
+│       ├── conftest.py
+│       ├── test_api.py
+│       ├── test_health.py
+│       ├── test_lints_agent.py
+│       ├── test_metrics.py
+│       └── test_user_features.py
+├── docker-compose.dev.yml
+├── docker-compose.prod.yml
+├── docker-compose.stage.yml
 ├── docker-compose.yml
 ├── docs
+│   ├── deployment.md
 │   ├── infra.md
 │   └── model_lifecycle.md
 ├── frontend
@@ -380,9 +399,11 @@ This multiplicative structure creates soft gating: low accuracy nullifies smooth
 │   └── vite.config.ts
 ├── README.md
 └── screenshots
-  ├── results.png
-  ├── stats.png
-  └── type.png
+    ├── leaderboard.png
+    ├── results.png
+    ├── stats.png
+    ├── type.png
+    └── wiki.png
 ```
 
 ## Contributing
