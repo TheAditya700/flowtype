@@ -121,16 +121,18 @@ def retrieve_snippets(
     # Convert L2 distances to probabilities using softmax with temperature
     # Lower distance = higher probability
     distances = np.array([s.get("distance", 0.0) for s in filtered_snippets])
-    
+
     # Use negative distances (closer = better) and apply softmax with temperature
     # Temperature controls exploration: lower temp = more exploitation, higher = more exploration
     temperature = 2.0
     neg_distances = -distances / temperature
-    
+
     # Softmax to get probabilities
-    exp_scores = np.exp(neg_distances - np.max(neg_distances))  # Subtract max for numerical stability
+    exp_scores = np.exp(
+        neg_distances - np.max(neg_distances)
+    )  # Subtract max for numerical stability
     probabilities = exp_scores / np.sum(exp_scores)
-    
+
     # Sample according to probabilities
     selected_idx = np.random.choice(len(filtered_snippets), p=probabilities)
     top_snippet_data = filtered_snippets[selected_idx]

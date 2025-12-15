@@ -4,9 +4,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     # Environment
     env: str = "dev"  # dev, stage, or prod
-    
+
     # Database
-    database_url: str = "postgresql://flowtype_dev:flowtype_dev@postgres_dev:5432/flowtype_dev"
+    database_url: str = (
+        "postgresql://flowtype_dev:flowtype_dev@postgres_dev:5432/flowtype_dev"
+    )
 
     # FAISS
     faiss_index_path: str = "data/dev/faiss_index.bin"

@@ -40,12 +40,29 @@ def ensure_prereqs() -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Bootstrap environment: generate → populate → build index")
-    parser.add_argument("--env", choices=["dev", "stage", "prod"], default="dev", help="Target environment for FAISS artifacts")
-    parser.add_argument("--skip-generate", action="store_true", help="Skip snippet generation step")
-    parser.add_argument("--skip-populate", action="store_true", help="Skip DB population step")
-    parser.add_argument("--skip-index", action="store_true", help="Skip FAISS index build step")
-    parser.add_argument("--keep-existing-snippets", action="store_true", help="Do not clear existing snippets before populate")
+    parser = argparse.ArgumentParser(
+        description="Bootstrap environment: generate → populate → build index"
+    )
+    parser.add_argument(
+        "--env",
+        choices=["dev", "stage", "prod"],
+        default="dev",
+        help="Target environment for FAISS artifacts",
+    )
+    parser.add_argument(
+        "--skip-generate", action="store_true", help="Skip snippet generation step"
+    )
+    parser.add_argument(
+        "--skip-populate", action="store_true", help="Skip DB population step"
+    )
+    parser.add_argument(
+        "--skip-index", action="store_true", help="Skip FAISS index build step"
+    )
+    parser.add_argument(
+        "--keep-existing-snippets",
+        action="store_true",
+        help="Do not clear existing snippets before populate",
+    )
     args = parser.parse_args()
 
     try:
