@@ -1,21 +1,21 @@
-# FlowType
+# NerdType
 
 Adaptive typing practice with a contextual bandit, FAISS retrieval, and keystroke-level telemetry across WPM, accuracy, smoothness, and rollover.
 
-FlowType is a personal research + product project exploring adaptive difficulty and motor-skill learning using real keystroke telemetry.
+NerdType is a personal research + product project exploring adaptive difficulty and motor-skill learning using real keystroke telemetry.
 
 The system is intentionally **interpretability-first**, drawing from research in human motor learning and typing dynamics rather than opaque end-to-end models. Adaptation is driven by explicit, inspectable signals—inter-key intervals, rollover, chunking, and error dynamics—that are surfaced directly to both the user and the learning algorithm.
 
 This design choice follows prior work showing that fine-grained keystroke timing contains rich, stable structure for modeling skill, learning, and cognition.
 
-## Why FlowType?
+## Why NerdType?
 
 **Traditional typing trainers** (Monkeytype, TypeRacer) are static:
 - Same word lists for everyone
 - No adaptation to your weaknesses
 - WPM-only optimization (ignores typing quality)
 
-**FlowType adapts to you:**
+**NerdType adapts to you:**
 - Personalized snippet difficulty based on your skill profile
 - Optimizes for motor learning: accuracy → smoothness → speed
 - Exposes rich metrics (rollover, IKI variance, chunking) that reveal how you actually type
@@ -23,22 +23,22 @@ This design choice follows prior work showing that fine-grained keystroke timing
 
 ## Research foundations
 
-FlowType’s metric design and adaptation loop are grounded in established research on typing dynamics, motor control, and keystroke timing:
+NerdType’s metric design and adaptation loop are grounded in established research on typing dynamics, motor control, and keystroke timing:
 
 - **Yin et al. (CHI 2018)** — *“How Do We Type? Movement Strategies and Performance in Everyday Typing”*  
   https://userinterfaces.aalto.fi/136Mkeystrokes/resources/chi-18-analysis.pdf  
   Large-scale analysis of **136 million keystrokes** from everyday typing.  
-  Demonstrates that expert performance emerges from **rhythmic timing, rollover behavior, chunked motor plans, and reduced variance**, motivating FlowType’s emphasis on IKIs, rollover, chunk length, and smoothness rather than WPM alone.
+  Demonstrates that expert performance emerges from **rhythmic timing, rollover behavior, chunked motor plans, and reduced variance**, motivating NerdType’s emphasis on IKIs, rollover, chunk length, and smoothness rather than WPM alone.
 
 - **Logan & Crump (2011)** — *“Hierarchical control of cognitive processes: The case for skilled typewriting”*  
   https://www.sciencedirect.com/science/chapter/bookseries/abs/pii/B9780123855275000012  
-  Shows that expert typing is governed by **hierarchical motor programs**, not character-level cognition, directly motivating FlowType’s chunking, fluency, rollover, and per-hand metrics.
+  Shows that expert typing is governed by **hierarchical motor programs**, not character-level cognition, directly motivating NerdType’s chunking, fluency, rollover, and per-hand metrics.
 
 - **Killourhy & Maxion (2009)** — *“Comparing anomaly-detection algorithms for keystroke dynamics”*  
   https://ieeexplore.ieee.org/document/5270346  
   Establishes that **inter-key interval distributions and variance** are stable, information-rich signals, supporting the use of IKI CV and spike-rate as core smoothness metrics.
 
-Together, these works motivate FlowType’s focus on **interpretable timing-based signals and bounded, incremental adaptation**, rather than black-box sequence models.
+Together, these works motivate NerdType’s focus on **interpretable timing-based signals and bounded, incremental adaptation**, rather than black-box sequence models.
 
 ## Retrieval + decision architecture (two-tower + bandit)
 - Two-tower setup: snippet tower (PCA to 16-dim) and user tower (130-dim state: EMA, variance, prev snippet). The LinTS bandit samples a weight matrix to map the user state to a query vector in snippet space.
