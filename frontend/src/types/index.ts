@@ -24,9 +24,6 @@ export interface UserResponse {
 export interface SnippetRetrieveResponse {
   snippet: SnippetResponse;
   wpm_windows: Record<string, number>;
-  predicted_wpm?: number;
-  predicted_accuracy?: number;
-  predicted_consistency?: number;
 }
 
 export interface KeystrokeEvent {
@@ -75,9 +72,6 @@ export interface SessionCreateRequest {
   user_state: UserState;
   sessionMode?: "15" | "30" | "60" | "120" | "free";
   flowScore?: number;
-  predicted_wpm?: number;
-  predicted_accuracy?: number;
-  predicted_consistency?: number;
 }
 
 export interface SnippetLog {
@@ -204,4 +198,77 @@ export interface SessionResponse {
 
   // Snippet results
   snippets?: SnippetResult[];
+}
+
+// Observability Types
+export interface ObservabilityHeader {
+  total_sessions: number;
+  active_users: number;
+  model_version: string;
+  last_snapshot_time: string | null;
+}
+
+export interface LearningHealthPoint {
+  t: string;
+  mean_precision: number;
+  mean_variance: number;
+}
+
+export interface LearningHealthResponse {
+  timeframe: string;
+  points: LearningHealthPoint[];
+}
+
+export interface AgentEffectivenessPoint {
+  t: string;
+  mean_reward: number;
+  reward_variance: number;
+  reward_std: number;
+  count: number;
+}
+
+export interface AgentEffectivenessResponse {
+  timeframe: string;
+  points: AgentEffectivenessPoint[];
+}
+
+export interface PerformanceDeltaPoint {
+  t: string;
+  delta_accuracy: number;
+  delta_smoothness: number;
+  delta_effective_wpm: number;
+  actual_accuracy: number;
+  actual_consistency: number;
+  actual_effective_wpm: number;
+}
+
+export interface PerformanceDeltasResponse {
+  timeframe: string;
+  points: PerformanceDeltaPoint[];
+}
+
+export interface UserSkill {
+  user_feature_idx: number;
+  snippet_feature_idx?: number; // Only present in individual weight mode
+  importance: number;
+  precision: number;
+  variance?: number; // Present in new aggregated mode
+  mean_weight?: number; // Present in new aggregated mode
+  sign: "positive" | "negative" | "mixed";
+  interaction_count?: number; // Only present in old aggregation mode
+}
+
+export interface UserSkillsResponse {
+  skills: UserSkill[];
+}
+
+export interface LearningActivityPoint {
+  t: string;
+  mean_abs_delta_mean: number;
+  fraction_weights_updated: number;
+}
+
+export interface LearningActivityResponse {
+  timeframe: string;
+  points: LearningActivityPoint[];
 }

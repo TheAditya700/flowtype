@@ -8,12 +8,11 @@ MODEL_PATH = "app/ml/lints_model.pkl"
 # ------------------------------------------------------------------
 # User feature indexing (within the 57-dim EMA vector)
 # ------------------------------------------------------------------
-IDX_ACCURACY = 0  # EMA of accuracy
-IDX_IKI_CV = (
-    10  # Global IKI CV (Coefficient of Variation for Inter-Keystroke-Intervals)
-)
-IDX_WPM_EFFECTIVE = 21  # EMA of effective WPM (wpm * accuracy)
-IDX_SPIKE_RATE = 27  # EMA of spike_rate (0..1)
+IDX_ACCURACY = 0   # EMA of accuracy
+IDX_IKI_CV = 11    # Global IKI CV (Coefficient of Variation for Inter-Keystroke-Intervals)
+IDX_WPM_RAW = 21   # EMA of raw WPM
+IDX_WPM_EFFECTIVE = 22  # EMA of effective WPM (wpm * accuracy)
+IDX_SPIKE_RATE = 28  # EMA of spike_rate (0..1)
 
 USER_BASE_DIM = 57  # base user feature dimensionality
 SNIPPET_DIM = 16  # PCA snippet embedding dim
@@ -72,6 +71,10 @@ class LinTSAgent:
         )
 
         self.version = 2  # incremented version
+        
+        # Store previous snapshot for delta calculation
+        self.prev_W_mean = None
+        self.prev_W_precision = None
 
     # ------------------------------------------------------------------
     # Context building
@@ -267,7 +270,6 @@ class LinTSAgent:
         delta_A = now_acc - base_acc
         delta_C = now_smoothness - base_smoothness
         delta_S = now_eff_wpm - base_eff_wpm
-
         # 4. Normalize / clip deltas
         # Accuracy / consistency: typically small deviations
         dA = float(np.clip(delta_A, -0.2, 0.2))
@@ -323,6 +325,26 @@ class LinTSAgent:
                 self.min_var = data.get("min_var", 1e-4)
                 self.max_precision = data.get("max_precision", 1e6)
                 self.mean_lr = data.get("mean_lr", 1.0)
+
+    def return_parameters(self) -> Dict[str, np.ndarray]:
+        return {
+            "W_mean": self.W_mean,
+            "W_precision": self.W_precision
+        }
+    
+    def snapshot_for_delta(self):
+        """Store current weights as previous snapshot for delta calculation."""
+        self.prev_W_mean = self.W_mean.copy()
+        self.prev_W_precision = self.W_precision.copy()
+    
+    def get_prev_snapshot(self) -> Optional[Dict[str, np.ndarray]]:
+        """Return previous snapshot if available, else None."""
+        if self.prev_W_mean is not None and self.prev_W_precision is not None:
+            return {
+                "W_mean": self.prev_W_mean,
+                "W_precision": self.prev_W_precision
+            }
+        return None
 
 
 # Singleton instance

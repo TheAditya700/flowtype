@@ -43,8 +43,8 @@ def retrieve_snippets(
         return wpm_map
 
     # 1. Fetch User & Compute Context
-    user_ema: List[float] = []
-    user_std: List[float] = []  # Placeholder
+    user_ema: List[float] = [100.0] * 57  # Default: 100 for new/anonymous users
+    user_std: List[float] = [0.0] * 57  # Default: zero variance
     prev_embedding: List[float] | None = None
 
     if request.user_state.user_id:
@@ -152,25 +152,7 @@ def retrieve_snippets(
         base_wpm = float(getattr(request.user_state, "rollingWpm", 0.0))
         wpm_windows = {str(w): round(base_wpm, 2) for w in [15, 30, 45, 60]}
 
-    # 8. Compute predicted performance metrics from user features
-    predicted_wpm = None
-    predicted_accuracy = None
-    predicted_consistency = None
-
-    if len(user_ema) >= 57:  # Ensure we have valid user features
-        # Use existing feature indices from user features
-        predicted_wpm = (
-            user_ema[21] if len(user_ema) > 21 else base_wpm
-        )  # IDX_WPM_EFFECTIVE
-        predicted_accuracy = user_ema[0] if len(user_ema) > 0 else 0.95  # IDX_ACCURACY
-        predicted_consistency = (
-            1.0 / (1.0 + user_ema[10]) if len(user_ema) > 10 else 0.8
-        )  # Inverse of IKI_CV
-
     return {
         "snippet": top_snippet,
         "wpm_windows": wpm_windows,
-        "predicted_wpm": predicted_wpm,
-        "predicted_accuracy": predicted_accuracy,
-        "predicted_consistency": predicted_consistency,
     }

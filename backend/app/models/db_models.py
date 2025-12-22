@@ -16,10 +16,6 @@ from sqlalchemy.sql import func
 from app.database import Base
 from sqlalchemy.orm import relationship
 
-
-# ------------------------------------------------------
-# db_models.py (rewritten for Stateful GRU + RL)
-# ------------------------------------------------------
 class User(Base):
     __tablename__ = "users"
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -77,9 +73,6 @@ class Snippet(Base):
     __table_args__ = (Index("idx_difficulty", "difficulty_score"),)
 
 
-# -----------------------------------------
-# Typing Session
-# -----------------------------------------
 class TypingSession(Base):
     __tablename__ = "typing_sessions"
 
@@ -116,3 +109,38 @@ class TypingSession(Base):
 
     # RL reward (for agent updates)
     reward = Column(Float, nullable=True)
+
+
+class ModelSnapshots(Base):
+    __tablename__ = "model_snapshots"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    created_at = Column(DateTime, default=func.now())
+    model_version = Column(String, nullable=False)
+    weights_uri = Column(String, nullable=True)  # Points to latest weights artifact
+
+    # Belief confidence
+    mean_precision = Column(Float, nullable=False)
+    median_precision = Column(Float, nullable=False)
+    p90_precision = Column(Float, nullable=False)
+    p99_precision = Column(Float, nullable=False)
+    mean_variance = Column(Float, nullable=False)
+    fraction_high_confidence = Column(Float, nullable=False)
+
+    # Belief structure
+    mean_abs_weight = Column(Float, nullable=False)
+    p90_abs_weight = Column(Float, nullable=False)
+    fraction_near_zero_mean = Column(Float, nullable=False)
+    fraction_confident_irrelevant = Column(Float, nullable=False)
+
+    # Learning dynamics
+    mean_abs_delta_mean = Column(Float, nullable=False)
+    mean_delta_precision = Column(Float, nullable=False)
+    fraction_weights_updated = Column(Float, nullable=False)
+
+    # Interpretability
+    top_positive_interactions = Column(JSON, nullable=False)
+    top_negative_interactions = Column(JSON, nullable=False)
+    top_certain_weights = Column(JSON, nullable=True)  # Top 10 most certain (high precision, high contribution)
+    top_uncertain_weights = Column(JSON, nullable=True)  # Top 10 most uncertain (low precision, high contribution)
+    top_importance_weights = Column(JSON, nullable=True)  # Top 10 by actual contribution to predictions

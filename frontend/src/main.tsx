@@ -9,6 +9,7 @@ import LeaderboardPage from "./pages/LeaderboardPage.tsx";
 import ChangeUsernamePage from "./pages/ChangeUsernamePage.tsx";
 import ChangePasswordPage from "./pages/ChangePasswordPage.tsx";
 import DeleteAccountPage from "./pages/DeleteAccountPage.tsx";
+import ObservabilityPage from "./pages/ObservabilityPage.tsx";
 import "./index.css"; // Tailwind CSS import
 import { AuthProvider } from "./context/AuthContext"; // Import AuthProvider
 import {
@@ -39,6 +40,7 @@ function Root() {
         <Route path="/leaderboard" element={<LeaderboardPage />} />
         <Route path="/wiki" element={<WikiPage />} />
         <Route path="/auth" element={<AuthPage />} />
+        <Route path="/observability" element={<ObservabilityPage />} />
         <Route
           path="/account/change-username"
           element={<ChangeUsernamePage />}

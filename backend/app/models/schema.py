@@ -77,11 +77,6 @@ class SessionCreateRequest(BaseModel):
     user_state: UserState
     flowScore: Optional[float] = 0.0
 
-    # Predicted metrics from LinTS agent
-    predicted_wpm: Optional[float] = None
-    predicted_accuracy: Optional[float] = None
-    predicted_consistency: Optional[float] = None
-
 
 # ------------------------------------------------------
 # Analytics Schemas (Dependencies for SessionResponse)
@@ -163,9 +158,6 @@ class SnippetRetrieveRequest(BaseModel):
 class SnippetResponse(BaseModel):
     snippet: Optional[dict]
     wpm_windows: dict
-    predicted_wpm: Optional[float] = None
-    predicted_accuracy: Optional[float] = None
-    predicted_consistency: Optional[float] = None
 
 
 # ------------------------------------------------------

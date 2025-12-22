@@ -129,7 +129,7 @@ export async function fetchNextSnippet(
 export async function saveSession(
   session: SessionCreateRequest,
 ): Promise<SessionResponse> {
-  return callApi<SessionResponse>("/sessions", "POST", session);
+  return callApi<SessionResponse>("/sessions/", "POST", session);
 }
 
 // New: Fetch User Profile (for dashboard)
@@ -186,4 +186,41 @@ export async function deleteAccount(
     { password },
     true,
   );
+}
+
+// Observability API Calls
+export async function fetchObservabilityHeader(): Promise<any> {
+  return callApi<any>("/observability/header", "GET");
+}
+
+export async function fetchLearningHealth(
+  timeframe: string = "day",
+  limit: number = 100
+): Promise<any> {
+  return callApi<any>(`/observability/learning_health?timeframe=${timeframe}&limit=${limit}`, "GET");
+}
+
+export async function fetchAgentEffectiveness(
+  timeframe: string = "day",
+  limit: number = 500
+): Promise<any> {
+  return callApi<any>(`/observability/agent_effectiveness?timeframe=${timeframe}&limit=${limit}`, "GET");
+}
+
+export async function fetchPerformanceDeltas(
+  timeframe: string = "day",
+  limit: number = 500
+): Promise<any> {
+  return callApi<any>(`/observability/performance_deltas?timeframe=${timeframe}&limit=${limit}`, "GET");
+}
+
+export async function fetchUserSkillsImportance(topK: number = 10, mode: string = "importance"): Promise<any> {
+  return callApi<any>(`/observability/user_skills?top_k=${topK}&mode=${mode}`, "GET");
+}
+
+export async function fetchLearningActivity(
+  timeframe: string = "day",
+  limit: number = 100
+): Promise<any> {
+  return callApi<any>(`/observability/learning_activity?timeframe=${timeframe}&limit=${limit}`, "GET");
 }

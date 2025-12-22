@@ -106,6 +106,18 @@ const Header: React.FC<HeaderProps> = ({ isPaused, sessionStarted }) => {
             <BookOpen size={16} />
             <span className="text-sm">wiki</span>
           </button>
+
+          <button
+            onClick={() => navigate("/observability")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
+              isActive("/observability")
+                ? "bg-primary text-bg font-semibold"
+                : "text-text-subtle hover:text-text hover:bg-gray-700"
+            }`}
+          >
+            <BarChart3 size={16} />
+            <span className="text-sm">observability</span>
+          </button>
         </nav>
       </div>
 

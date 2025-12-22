@@ -80,12 +80,6 @@ function App() {
   });
   const [isAfk, setIsAfk] = useState(false);
 
-  const [predictedMetrics, setPredictedMetrics] = useState<{
-    predicted_wpm?: number;
-    predicted_accuracy?: number;
-    predicted_consistency?: number;
-  }>({});
-
   const handleStatsUpdate = useCallback(
     (stats: {
       wpm: number;
@@ -146,15 +140,6 @@ function App() {
         const response = await fetchNextSnippet(stateWithRecent, currentId);
         if (!response || !response.snippet) {
           break;
-        }
-
-        // Store predicted metrics from first fetch (for session start predictions)
-        if (i === 0 && response.predicted_wpm !== undefined) {
-          setPredictedMetrics({
-            predicted_wpm: response.predicted_wpm,
-            predicted_accuracy: response.predicted_accuracy,
-            predicted_consistency: response.predicted_consistency,
-          });
         }
 
         setSnippetQueue((prev) => [...prev, response.snippet]);
@@ -332,9 +317,6 @@ function App() {
       snippets: snippetResults,
       user_state: userState,
       sessionMode: liveStats.sessionMode,
-      predicted_wpm: predictedMetrics.predicted_wpm,
-      predicted_accuracy: predictedMetrics.predicted_accuracy,
-      predicted_consistency: predictedMetrics.predicted_consistency,
     };
 
     try {

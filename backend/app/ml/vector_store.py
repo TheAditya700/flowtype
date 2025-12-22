@@ -59,3 +59,14 @@ class VectorStore:
             results.append({**snippet, "distance": float(dist)})
 
         return results
+
+    def get_embedding_by_id(self, snippet_id: str) -> np.ndarray | None:
+        """Reconstruct a snippet embedding from FAISS by snippet id."""
+        try:
+            # metadata list index aligns with FAISS index ids
+            for idx, meta in enumerate(self.metadata):
+                if str(meta.get("id")) == str(snippet_id):
+                    return self.index.reconstruct(idx)
+        except Exception:
+            return None
+        return None

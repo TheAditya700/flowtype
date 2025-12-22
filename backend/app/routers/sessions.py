@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.models.schema import (
@@ -12,6 +12,8 @@ from app.models.db_models import TypingSession, User, Snippet
 from app.ml.user_features import UserFeatureExtractor
 from app.ml.feature_aggregator import update_long_term_features
 from app.ml.lints_agent import agent
+from app.utils.compute_snapshot import compute_model_snapshot, compute_top_interactions, compute_top_certain_uncertain
+from app.utils.s3_utils import save_agent_snapshot_to_s3
 from sqlalchemy.sql import func
 import logging, uuid, json
 import numpy as np
@@ -20,6 +22,8 @@ from typing import Any, Dict, cast
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+POSTGRES_LOGGING_FREQ = 1
+DEEP_STORE_FREQ = 2
 
 def get_db():
     db = SessionLocal()
@@ -30,7 +34,11 @@ def get_db():
 
 
 @router.post("/", response_model=SessionResponse)
-def create_session(request: SessionCreateRequest, db: Session = Depends(get_db)):
+def create_session(
+    request: SessionCreateRequest,
+    req: Request,
+    db: Session = Depends(get_db),
+):
     """
     Handles the end of a snippet typing session:
       - Saves the final session row
@@ -217,6 +225,9 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
         db_snippets = db.query(Snippet).filter(Snippet.id.in_(snippet_ids)).all()
         snippet_map = {str(s.id): s for s in db_snippets}
 
+        # Helper to fetch embedding from FAISS if not stored in DB
+        vector_store = req.app.state.vector_store
+
         # Calculate global smoothness proxies for reward calculation
         def safe_div(n, d, default=0.0):
             return n / d if d > 0 else default
@@ -236,7 +247,18 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
 
         for s_res in request.snippets:
             s_db = snippet_map.get(s_res.snippet_id)
+
+            # Fallback: reconstruct embedding from FAISS index if missing in DB
+            embedding_vec = None
             if s_db is not None and s_db.embedding is not None:
+                embedding_vec = s_db.embedding
+                logger.info(f"Using DB embedding for snippet {s_res.snippet_id}")
+            else:
+                embedding_vec = vector_store.get_embedding_by_id(s_res.snippet_id)
+                logger.info(f"Using FAISS fallback for snippet {s_res.snippet_id}, got: {embedding_vec is not None}")
+
+            if embedding_vec is not None:
+                logger.info(f"Updating agent for snippet {s_res.snippet_id}, reward will be calculated")
                 metrics_now = {
                     "accuracy": s_res.accuracy,
                     "wpm": s_res.wpm,
@@ -251,7 +273,7 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
                 # Agent Update
                 # Context: EMA, STD, PrevSnippet
                 # We need STD from the EMA state if available
-                user_std = []
+                user_std = [0.0] * 57  # Default: zero stddev (57-dim)
                 if (
                     "ema_var" in new_ema_state
                 ):  # Use new variance or old? Usually old context.
@@ -267,10 +289,91 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
                 )
 
                 agent.update(
-                    user_context, np.array(s_db.embedding, dtype=np.float32), r
+                    user_context, np.array(embedding_vec, dtype=np.float32), r
                 )
 
         agent.save()
+
+        # -----------------------------------------------------
+        # 2.5 Model Snapshot (frequency-controlled)
+        # -----------------------------------------------------
+
+        from app.models.db_models import ModelSnapshots, TypingSession
+
+        # Total sessions so far (after this one)
+        session_count = db.query(func.count(TypingSession.id)).scalar()
+
+        # ---- PostgreSQL snapshot gating ----
+        if session_count % POSTGRES_LOGGING_FREQ == 0:
+
+            # Get previous snapshot for delta calculation
+            prev_snapshot = agent.get_prev_snapshot()
+            
+            snapshot_stats = compute_model_snapshot(agent, prev_snapshot=prev_snapshot)
+
+            # Store current state as "previous" for next time
+            agent.snapshot_for_delta()
+
+            top_pos, top_neg = compute_top_interactions(agent)
+            top_certain, top_uncertain, top_importance = compute_top_certain_uncertain(agent)
+
+            weights_uri = None
+
+            # ---- Deep store gating ----
+            if session_count % DEEP_STORE_FREQ == 0:
+                try:
+                    weights_uri = save_agent_snapshot_to_s3(
+                        agent=agent,
+                        session_count=session_count,
+                    )
+                except Exception as e:
+                    # Log the error but don't fail the session save
+                    logger.warning(
+                        f"Failed to save agent snapshot to S3: {e}. Session will be saved without weights_uri."
+                    )
+                    weights_uri = None
+            else:
+                # Carry forward the last known weights artifact so every snapshot points somewhere
+                last_weights_uri = (
+                    db.query(ModelSnapshots.weights_uri)
+                    .order_by(ModelSnapshots.created_at.desc())
+                    .limit(1)
+                    .scalar()
+                )
+                if last_weights_uri:
+                    weights_uri = last_weights_uri
+
+            model_snapshot = ModelSnapshots(
+                model_version=str(agent.version),
+
+                mean_precision=snapshot_stats["mean_precision"],
+                median_precision=snapshot_stats["median_precision"],
+                p90_precision=snapshot_stats["p90_precision"],
+                p99_precision=snapshot_stats["p99_precision"],
+                mean_variance=snapshot_stats["mean_variance"],
+                fraction_high_confidence=snapshot_stats["fraction_high_confidence"],
+
+                mean_abs_weight=snapshot_stats["mean_abs_weight"],
+                p90_abs_weight=snapshot_stats["p90_abs_weight"],
+                fraction_near_zero_mean=snapshot_stats["fraction_near_zero_mean"],
+                fraction_confident_irrelevant=snapshot_stats["fraction_confident_irrelevant"],
+
+                mean_abs_delta_mean=snapshot_stats["mean_abs_delta_mean"],
+                mean_delta_precision=snapshot_stats["mean_delta_precision"],
+                fraction_weights_updated=snapshot_stats["fraction_weights_updated"],
+
+                top_positive_interactions=top_pos,
+                top_negative_interactions=top_neg,
+                top_certain_weights=top_certain,
+                top_uncertain_weights=top_uncertain,
+                top_importance_weights=top_importance,
+
+                weights_uri=weights_uri,
+            )
+
+            db.add(model_snapshot)
+
+
 
         # -----------------------------------------------------
         # 3. Calculate Smoothness Score (needed for DB save)
@@ -294,7 +397,9 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
             if snippet is not None and snippet.processed_embedding is not None:
                 snippet_embeddings.append(snippet.processed_embedding)
             else:
-                snippet_embeddings.append(None)
+                # Fallback: reconstruct embedding from FAISS index
+                emb_vec = vector_store.get_embedding_by_id(sid)
+                snippet_embeddings.append(emb_vec.tolist() if emb_vec is not None else None)
 
         # Get user embedding (130-dim state vector)
         user_embedding_vec = None
@@ -303,7 +408,7 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
                 user_ema_vector  # Already constructed as [ema | std | prev_snippet]
             )
 
-        db_session = TypingSession(
+        db_typing_session = TypingSession(
             user_id=request.user_id,
             duration_seconds=float(duration_seconds),
             created_at=func.now(),
@@ -314,29 +419,14 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
             actual_wpm=float(calculated_wpm),
             actual_accuracy=float(calculated_accuracy),
             actual_consistency=float(smoothness_score),
-            predicted_wpm=(
-                float(request.predicted_wpm)
-                if request.predicted_wpm is not None
-                else None
-            ),
-            predicted_accuracy=(
-                float(request.predicted_accuracy)
-                if request.predicted_accuracy is not None
-                else None
-            ),
-            predicted_consistency=(
-                float(request.predicted_consistency)
-                if request.predicted_consistency is not None
-                else None
-            ),
             errors=int(errors),
             raw_wpm=float(calculated_raw_wpm),
             reward=float(total_session_reward),
         )
-        db.add(db_session)
+        db.add(db_typing_session)
 
         db.commit()
-        db.refresh(db_session)
+        db.refresh(db_typing_session)
 
         # -----------------------------------------------------
         # 5. Generate Detailed Analytics (Response)
@@ -532,7 +622,7 @@ def create_session(request: SessionCreateRequest, db: Session = Depends(get_db))
                 heatmap_data[char] = {"accuracy": float(acc), "speed": float(speed)}
 
         return SessionResponse(
-            session_id=str(db_session.id),
+            session_id=str(db_typing_session.id),
             reward=total_session_reward,
             durationSeconds=duration_seconds,
             wpm=calculated_wpm,

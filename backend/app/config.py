@@ -24,6 +24,13 @@ class Settings(BaseSettings):
     secret_key: str = "dev-secret-change-in-production"
     access_token_expire_minutes: int = 30  # Default to 30 minutes
 
+    # Object storage (MinIO/S3 compatible)
+    minio_endpoint: str = "http://minio_dev:9000"
+    minio_access_key: str = "minioadmin"
+    minio_secret_key: str = "minioadmin"
+    minio_bucket: str = "ml-artifacts-dev"
+    minio_region: str = "us-east-1"
+
     model_config = SettingsConfigDict(env_file=".env")
 
 

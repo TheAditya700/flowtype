@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import engine, Base
 from app.routers import health, snippets, sessions, users, auth, profile_merge
+from app.routers import observability
 from app.ml.vector_store import VectorStore
 import logging
 
@@ -51,6 +52,7 @@ app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
 app.include_router(users.router, prefix="/api/users", tags=["users"])
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(profile_merge.router, prefix="/api/profile", tags=["profile"])
+app.include_router(observability.router, prefix="/api", tags=["observability"]) 
 
 
 @app.get("/")
