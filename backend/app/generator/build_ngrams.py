@@ -1,12 +1,14 @@
 import json
 import math
-from pathlib import Path
-from collections import Counter, defaultdict
-from . import config
+from collections import Counter
 
-ENRICHED_WORDLIST_PATH = config.ENRICHED_WORDLIST_PATH
-BIGRAM_OUT = config.BIGRAM_PATH
-TRIGRAM_OUT = config.TRIGRAM_PATH
+from . import config
+from app.utils.s3_data import read_json, write_json
+
+ENRICHED_WORDLIST_KEY = config.ENRICHED_WORDLIST_KEY
+BIGRAM_KEY = config.BIGRAM_KEY
+TRIGRAM_KEY = config.TRIGRAM_KEY
+BUCKET = config.OFFLINE_BUCKET
 
 # Fallbacks to match difficulty_features.py
 UNKNOWN_BIGRAM = -15.0
@@ -23,7 +25,7 @@ def load_enhanced_wordlist():
         ]
     }
     """
-    data = json.loads(ENRICHED_WORDLIST_PATH.read_text())
+    data = read_json(BUCKET, ENRICHED_WORDLIST_KEY, env="offline")
     return data["words"]  # list of dicts
 
 
@@ -82,11 +84,11 @@ def build_weighted_ngrams():
     # ---------------------------------------------------------
     # Stage 3 — Save files
     # ---------------------------------------------------------
-    BIGRAM_OUT.write_text(json.dumps(bigram_scores, indent=2))
-    TRIGRAM_OUT.write_text(json.dumps(trigram_scores, indent=2))
+    write_json(BUCKET, BIGRAM_KEY, bigram_scores, env="offline")
+    write_json(BUCKET, TRIGRAM_KEY, trigram_scores, env="offline")
 
-    print(f"Saved {len(bigram_scores)} log-scaled bigrams → {BIGRAM_OUT}")
-    print(f"Saved {len(trigram_scores)} log-scaled trigrams → {TRIGRAM_OUT}")
+    print(f"Saved {len(bigram_scores)} log-scaled bigrams → s3://{BUCKET}/{BIGRAM_KEY}")
+    print(f"Saved {len(trigram_scores)} log-scaled trigrams → s3://{BUCKET}/{TRIGRAM_KEY}")
 
 
 if __name__ == "__main__":

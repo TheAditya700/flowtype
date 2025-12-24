@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { UserSkill } from "../../types";
 import { getFeatureName } from "../../utils/featureNames";
 import { ArrowUp, ArrowDown, Minus, TrendingUp, Shield, AlertCircle } from "lucide-react";
@@ -11,6 +11,29 @@ interface Props {
 
 const FeatureImportanceWidget: React.FC<Props> = ({ skills, loading, onModeChange }) => {
   const [mode, setMode] = useState<"importance" | "certain" | "uncertain">("importance");
+
+  // Ensure hooks run in consistent order every render
+  const safeSkills: UserSkill[] = Array.isArray(skills) ? skills : [];
+
+  const maxByMode = useMemo(() => {
+    try {
+      switch (mode) {
+        case "importance":
+          return Math.max(...safeSkills.map((s) => s.impact ?? 0), 1);
+        case "certain":
+          return Math.max(...safeSkills.map((s) => s.certainty ?? 0), 1);
+        case "uncertain":
+          return Math.max(...safeSkills.map((s) => s.uncertainty ?? 0), 1);
+        default:
+          return 1;
+      }
+    } catch {
+      return 1;
+    }
+  }, [mode, safeSkills]);
+
+  const metricLabel = mode === "importance" ? "Impact" : mode === "certain" ? "Certain" : "Uncertain";
+  const valueFor = (s: UserSkill) => (mode === "importance" ? (s.impact ?? 0) : mode === "certain" ? (s.certainty ?? 0) : (s.uncertainty ?? 0));
 
   const handleModeChange = (newMode: "importance" | "certain" | "uncertain") => {
     setMode(newMode);
@@ -32,16 +55,13 @@ const FeatureImportanceWidget: React.FC<Props> = ({ skills, loading, onModeChang
     );
   }
 
-  if (skills.length === 0) {
+  if (safeSkills.length === 0) {
     return (
       <div className="bg-gray-900 p-6 rounded-xl border border-gray-800 flex items-center justify-center">
         <span className="text-gray-500 font-mono">No feature data available</span>
       </div>
     );
   }
-
-  const maxImportance = Math.max(...skills.map((s) => s.importance || 0), 1);
-  const maxPrecision = Math.max(...skills.map((s) => s.precision || 0), 1);
 
   const getModeTitle = () => {
     switch (mode) {
@@ -53,9 +73,9 @@ const FeatureImportanceWidget: React.FC<Props> = ({ skills, loading, onModeChang
 
   const getModeDescription = () => {
     switch (mode) {
-      case "importance": return "User skills driving snippet selection";
-      case "certain": return "Features with highest confidence (precision)";
-      case "uncertain": return "Features with lowest confidence (high variance)";
+      case "importance": return "Impact = Σ E[|W|] across components";
+      case "certain": return "Certain = mean P(|W| > ε) across components";
+      case "uncertain": return "Uncertain = Σ Var(W)·E[|W|] across components";
     }
   };
 
@@ -69,13 +89,12 @@ const FeatureImportanceWidget: React.FC<Props> = ({ skills, loading, onModeChang
       </div>
 
       {/* Mode Toggle */}
-      <div className="flex items-center gap-1 bg-gray-800 p-1 rounded-lg border border-gray-700 mb-4">
+      <div className="flex items-center gap-1 bg-gray-800 p-1 rounded-lg border border-gray-800 mb-4">
         <button
           onClick={() => handleModeChange("importance")}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-mono transition-all flex-1 justify-center ${
             mode === "importance"
-              ? "bg-blue-600 text-white shadow-lg shadow-blue-900/20"
-              : "text-gray-400 hover:text-gray-200"
+              ?"bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"
           }`}
         >
           <TrendingUp size={14} /> Impact
@@ -84,8 +103,7 @@ const FeatureImportanceWidget: React.FC<Props> = ({ skills, loading, onModeChang
           onClick={() => handleModeChange("certain")}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-mono transition-all flex-1 justify-center ${
             mode === "certain"
-              ? "bg-green-600 text-white shadow-lg shadow-green-900/20"
-              : "text-gray-400 hover:text-gray-200"
+              ?"bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"
           }`}
         >
           <Shield size={14} /> Certain
@@ -94,8 +112,7 @@ const FeatureImportanceWidget: React.FC<Props> = ({ skills, loading, onModeChang
           onClick={() => handleModeChange("uncertain")}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-mono transition-all flex-1 justify-center ${
             mode === "uncertain"
-              ? "bg-amber-600 text-white shadow-lg shadow-amber-900/20"
-              : "text-gray-400 hover:text-gray-200"
+              ?"bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"
           }`}
         >
           <AlertCircle size={14} /> Uncertain
@@ -103,9 +120,14 @@ const FeatureImportanceWidget: React.FC<Props> = ({ skills, loading, onModeChang
       </div>
 
       <div className="flex-grow space-y-4 overflow-y-auto pr-2 custom-scrollbar">
-        {skills.map((skill, idx) => {
-          const userFeatureName = getFeatureName(skill.user_feature_idx, "user");
+        {safeSkills.map((skill, idx) => {
+          let userFeatureName = String(skill.user_feature_idx);
+          try {
+            const name = getFeatureName(skill.user_feature_idx, "user" as any);
+            if (typeof name === 'string' && name.length > 0) userFeatureName = name;
+          } catch {}
           
+          const derivedSign = (skill.mean_weight ?? 0) > 0 ? 'positive' : (skill.mean_weight ?? 0) < 0 ? 'negative' : 'neutral';
           return (
           <div key={idx} className="group">
             <div className="flex items-center justify-between mb-1">
@@ -114,15 +136,15 @@ const FeatureImportanceWidget: React.FC<Props> = ({ skills, loading, onModeChang
               </span>
               <div className="flex items-center gap-2">
                  <span className={`text-xs font-mono font-bold ${
-                    skill.sign === 'positive' ? 'text-green-400' :
-                    skill.sign === 'negative' ? 'text-red-400' : 'text-gray-400'
+                    derivedSign === 'positive' ? 'text-green-400' :
+                    derivedSign === 'negative' ? 'text-red-400' : 'text-gray-400'
                  }`}>
-                  {skill.sign === 'positive' ? <ArrowUp size={12} className="inline" /> :
-                   skill.sign === 'negative' ? <ArrowDown size={12} className="inline" /> :
+                  {derivedSign === 'positive' ? <ArrowUp size={12} className="inline" /> :
+                   derivedSign === 'negative' ? <ArrowDown size={12} className="inline" /> :
                    <Minus size={12} className="inline" />}
                  </span>
                  <span className="text-xs font-mono text-gray-500">
-                   {mode === "importance" ? `w=${(skill.importance || 0).toFixed(4)}` : `p=${(skill.precision || 0).toFixed(2)}`}
+                   {metricLabel[0]}={(valueFor(skill) || 0).toFixed(4)}
                  </span>
               </div>
             </div>
@@ -131,18 +153,23 @@ const FeatureImportanceWidget: React.FC<Props> = ({ skills, loading, onModeChang
                 className={`h-full rounded-full transition-all duration-500 ${
                     mode === "certain" ? 'bg-green-500' :
                     mode === "uncertain" ? 'bg-amber-500' :
-                    skill.sign === 'positive' ? 'bg-green-500' :
-                    skill.sign === 'negative' ? 'bg-red-500' : 'bg-gray-500'
+                    derivedSign === 'positive' ? 'bg-green-500' :
+                    derivedSign === 'negative' ? 'bg-red-500' : 'bg-gray-500'
                 }`}
-                style={{ width: `${mode === "importance" ? ((skill.importance || 0) / maxImportance) * 100 : ((skill.precision || 0) / maxPrecision) * 100}%` }}
+                style={{ width: `${(() => {
+                  const denom = Number.isFinite(maxByMode) && maxByMode > 0 ? maxByMode : 1;
+                  const raw = (valueFor(skill) / denom) * 100;
+                  const pct = Math.max(0, Math.min(100, Number.isFinite(raw) ? raw : 0));
+                  return pct;
+                })()}%` }}
               />
             </div>
             <div className="mt-1 flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">
                 <span className="text-[10px] font-mono text-gray-600">
-                    Precision: {(skill.precision || 0).toFixed(2)}
+                    {metricLabel}: {(valueFor(skill) || 0).toFixed(4)}
                 </span>
                 <span className="text-[10px] font-mono text-gray-600">
-                    Weight: {(skill.importance || 0).toFixed(4)}
+                    Impact: {(skill.impact || 0).toFixed(4)}
                 </span>
             </div>
           </div>

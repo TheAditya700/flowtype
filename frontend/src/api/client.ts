@@ -10,6 +10,8 @@ import {
   Token,
   UserResponse,
 } from "../types";
+import { UserSkillsAllResponse } from "../types";
+import { Scale, getScaleLimit } from "../utils/chartUtils";
 
 // @ts-ignore - Vite env type
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
@@ -194,33 +196,41 @@ export async function fetchObservabilityHeader(): Promise<any> {
 }
 
 export async function fetchLearningHealth(
-  timeframe: string = "day",
-  limit: number = 100
+  scale: Scale = "single",
+  limit?: number
 ): Promise<any> {
-  return callApi<any>(`/observability/learning_health?timeframe=${timeframe}&limit=${limit}`, "GET");
+  const effectiveLimit = limit ?? getScaleLimit(scale);
+  const params = new URLSearchParams({ scale, limit: String(effectiveLimit) });
+  return callApi<any>(`/observability/learning_health?${params.toString()}`, "GET");
 }
 
 export async function fetchAgentEffectiveness(
-  timeframe: string = "day",
-  limit: number = 500
+  scale: Scale = "single",
+  limit?: number
 ): Promise<any> {
-  return callApi<any>(`/observability/agent_effectiveness?timeframe=${timeframe}&limit=${limit}`, "GET");
+  const effectiveLimit = limit ?? getScaleLimit(scale);
+  const params = new URLSearchParams({ scale, limit: String(effectiveLimit) });
+  return callApi<any>(`/observability/agent_effectiveness?${params.toString()}`, "GET");
 }
 
 export async function fetchPerformanceDeltas(
-  timeframe: string = "day",
-  limit: number = 500
+  scale: Scale = "single",
+  limit?: number
 ): Promise<any> {
-  return callApi<any>(`/observability/performance_deltas?timeframe=${timeframe}&limit=${limit}`, "GET");
+  const effectiveLimit = limit ?? getScaleLimit(scale);
+  const params = new URLSearchParams({ scale, limit: String(effectiveLimit) });
+  return callApi<any>(`/observability/performance_deltas?${params.toString()}`, "GET");
 }
 
-export async function fetchUserSkillsImportance(topK: number = 10, mode: string = "importance"): Promise<any> {
-  return callApi<any>(`/observability/user_skills?top_k=${topK}&mode=${mode}`, "GET");
+export async function fetchUserSkillsAll(topK: number = 10): Promise<UserSkillsAllResponse> {
+  return callApi<UserSkillsAllResponse>(`/observability/user_skills_all?top_k=${topK}`, "GET");
 }
 
 export async function fetchLearningActivity(
-  timeframe: string = "day",
-  limit: number = 100
+  scale: Scale = "single",
+  limit?: number
 ): Promise<any> {
-  return callApi<any>(`/observability/learning_activity?timeframe=${timeframe}&limit=${limit}`, "GET");
+  const effectiveLimit = limit ?? getScaleLimit(scale);
+  const params = new URLSearchParams({ scale, limit: String(effectiveLimit) });
+  return callApi<any>(`/observability/learning_activity?${params.toString()}`, "GET");
 }

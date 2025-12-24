@@ -26,7 +26,7 @@ services:
       timeout: 5s
       retries: 5
 
-  minio_dev:
+  minio-dev:
     build:
       context: .
       dockerfile: Dockerfile.minio
@@ -58,7 +58,7 @@ services:
     depends_on:
       postgres_dev:
         condition: service_healthy
-      minio_dev:
+      minio-dev:
         condition: service_started
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 

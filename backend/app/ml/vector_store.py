@@ -3,33 +3,48 @@ import numpy as np
 import json
 from pathlib import Path
 from app.config import settings
+from app.utils.s3_data import get_env_data_bucket, download_to_temp, upload_bytes
 
 
 class VectorStore:
     def __init__(self):
-        self.index_path = Path(settings.faiss_index_path)
-        self.metadata_path = Path(settings.snippet_metadata_path)
         self.index = None
         self.metadata = []
 
-        if self.index_path.exists() and self.metadata_path.exists():
+        # Try to load from S3 data bucket for current env
+        try:
             self.load()
-        else:
-            # Create empty index
+        except Exception:
+            # Create empty index if load fails
             self.index = faiss.IndexFlatL2(settings.embedding_dim)
 
     def load(self):
-        """Load FAISS index and metadata from disk"""
-        self.index = faiss.read_index(str(self.index_path))
-        with open(self.metadata_path) as f:
+        """Load FAISS index and metadata from S3 (env bucket)."""
+        bucket = get_env_data_bucket(settings.env)
+        # Download index to temp file for FAISS
+        idx_tmp_path = download_to_temp(bucket, settings.faiss_index_key)
+        self.index = faiss.read_index(str(idx_tmp_path))
+        # Load metadata JSON
+        meta_tmp_path = download_to_temp(bucket, settings.snippet_metadata_key)
+        with open(meta_tmp_path) as f:
             self.metadata = json.load(f)
 
     def save(self):
-        """Save FAISS index and metadata to disk"""
-        self.index_path.parent.mkdir(parents=True, exist_ok=True)
-        faiss.write_index(self.index, str(self.index_path))
-        with open(self.metadata_path, "w") as f:
-            json.dump(self.metadata, f)
+        """Persist FAISS index and metadata to S3 (env bucket)."""
+        bucket = get_env_data_bucket(settings.env)
+        # Serialize FAISS index to bytes
+        # Use temp path since serialize_index may not be available
+        tmp = Path("/tmp/faiss_index.bin")
+        faiss.write_index(self.index, str(tmp))
+        body = tmp.read_bytes()
+        upload_bytes(bucket, settings.faiss_index_key, body)
+        # Upload metadata JSON
+        upload_bytes(
+            bucket,
+            settings.snippet_metadata_key,
+            json.dumps(self.metadata).encode("utf-8"),
+            content_type="application/json",
+        )
 
     def add(self, embeddings: np.ndarray, metadata: list[dict]):
         """Add vectors and metadata to index"""

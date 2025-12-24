@@ -11,17 +11,16 @@ import {
   ReferenceLine,
 } from "recharts";
 import { PerformanceDeltaPoint } from "../../types";
-import { format } from "date-fns";
 import { Zap, Target, Activity } from "lucide-react";
-import { Timeframe, getXAxisDomain, formatXAxisTick, generateFixedTicks } from "../../utils/chartUtils";
+import { Scale, buildSessionAxis, formatSessionTick, formatSessionLabel } from "../../utils/chartUtils";
 
 interface Props {
   data: PerformanceDeltaPoint[];
   loading: boolean;
-  timeframe: Timeframe;
+  scale: Scale;
 }
 
-const PerformanceDeltasChart: React.FC<Props> = ({ data, loading, timeframe }) => {
+const PerformanceDeltasChart: React.FC<Props> = ({ data, loading, scale }) => {
   const [mode, setMode] = useState<"wpm" | "accuracy" | "smoothness">("wpm");
 
   if (loading) {
@@ -33,26 +32,15 @@ const PerformanceDeltasChart: React.FC<Props> = ({ data, loading, timeframe }) =
   }
 
   // Process data for the chart based on mode
-  const chartData = data.map(p => ({
+  const chartData = data.map((p, idx) => ({
     ...p,
-    timestamp: new Date(p.t).getTime(),
+    session: idx + 1,
     // Multiply by 100 if they are fractions (0-1)
     display_accuracy: p.delta_accuracy * 100,
     display_smoothness: p.delta_smoothness * 100,
   }));
 
-  const lastTimestamp = chartData.length > 0 ? Math.max(...chartData.map(d => d.timestamp)) : undefined;
-  const domain = getXAxisDomain(timeframe, lastTimestamp);
-  const ticks = generateFixedTicks(timeframe, lastTimestamp);
-  
-  // Filter to include points within domain plus one point before for left border extension
-  const [domainStart, domainEnd] = domain;
-  const filteredData = chartData.filter((d, idx, arr) => {
-    if (d.timestamp >= domainStart && d.timestamp <= domainEnd) return true;
-    // Include one point before the domain start
-    if (d.timestamp < domainStart && (idx === arr.length - 1 || arr[idx + 1].timestamp >= domainStart)) return true;
-    return false;
-  });
+  const { domain, ticks } = buildSessionAxis(chartData.length);
 
   if (data.length === 0) {
     return (
@@ -72,13 +60,12 @@ const PerformanceDeltasChart: React.FC<Props> = ({ data, loading, timeframe }) =
           </p>
         </div>
         
-        <div className="flex items-center gap-1 bg-gray-800 p-1 rounded-lg border border-gray-700">
+        <div className="flex items-center gap-1 bg-gray-800 p-1 rounded-lg border border-gray-800">
           <button
             onClick={() => setMode("wpm")}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-mono transition-all ${
               mode === "wpm"
-                ? "bg-blue-600 text-white shadow-lg shadow-blue-900/20"
-                : "text-gray-400 hover:text-gray-200"
+                ?"bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"
             }`}
           >
             <Zap size={14} /> WPM
@@ -87,8 +74,7 @@ const PerformanceDeltasChart: React.FC<Props> = ({ data, loading, timeframe }) =
             onClick={() => setMode("accuracy")}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-mono transition-all ${
               mode === "accuracy"
-                ? "bg-emerald-600 text-white shadow-lg shadow-emerald-900/20"
-                : "text-gray-400 hover:text-gray-200"
+                ?"bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"
             }`}
           >
             <Target size={14} /> ACC
@@ -97,8 +83,7 @@ const PerformanceDeltasChart: React.FC<Props> = ({ data, loading, timeframe }) =
             onClick={() => setMode("smoothness")}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-mono transition-all ${
               mode === "smoothness"
-                ? "bg-amber-600 text-white shadow-lg shadow-amber-900/20"
-                : "text-gray-400 hover:text-gray-200"
+                ?"bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"
             }`}
           >
             <Activity size={14} /> SMTH
@@ -108,18 +93,17 @@ const PerformanceDeltasChart: React.FC<Props> = ({ data, loading, timeframe }) =
 
       <div className="flex-grow min-h-[250px]">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={filteredData}>
+          <LineChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
             <ReferenceLine y={0} stroke="#4B5563" strokeDasharray="3 3" />
             <XAxis
-              dataKey="timestamp"
+              dataKey="session"
               type="number"
               domain={domain}
               ticks={ticks}
-              tickFormatter={(t) => formatXAxisTick(t, timeframe)}
+              tickFormatter={(t) => formatSessionTick(t as number, scale)}
               stroke="#4B5563"
               tick={{ fill: "#9CA3AF", fontSize: 10, fontFamily: "monospace" }}
-              scale="time"
             />
             <YAxis
               stroke="#4B5563"
@@ -135,7 +119,7 @@ const PerformanceDeltasChart: React.FC<Props> = ({ data, loading, timeframe }) =
               }}
               itemStyle={{ fontFamily: "monospace", fontSize: "12px" }}
               labelStyle={{ fontFamily: "monospace", color: "#9CA3AF", fontSize: "12px" }}
-              labelFormatter={(t) => format(new Date(t), "PPpp")}
+              labelFormatter={(value) => formatSessionLabel(value as number, scale)}
               formatter={(value: number, name: string) => {
                 const valStr = mode !== "wpm" ? `${value.toFixed(2)}%` : value.toFixed(2);
                 return [valStr, name];

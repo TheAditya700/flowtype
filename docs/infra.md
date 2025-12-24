@@ -30,6 +30,12 @@ data/stage/faiss_index.bin + snippet_metadata.json
 data/prod/faiss_index.bin + snippet_metadata.json
 ```
 
+## Object storage (MinIO / S3)
+- Buckets: `flowtype-offline`, `flowtype-dev`, `flowtype-stage`, `flowtype-prod`.
+- Endpoints: dev `http://localhost:9000`, stage `http://localhost:9002`, prod `http://localhost:9004` (override via `.env.*`).
+- `python backend/scripts/migrate_data_to_minio.py` syncs local artifacts into the correct buckets before promotions or bootstrap.
+- Promotion scripts and bootstrap expect the matching MinIO service to be reachable; start the relevant stack (`docker-compose[-.stage|-.prod].yml`) first.
+
 ## Config knobs
 - `ENV`: dev | stage | prod
 - `DATABASE_URL`: postgres connection string
@@ -68,3 +74,9 @@ curl http://localhost:8002/health  # prod
 - Use secrets manager (AWS Secrets Manager, Vault)
 - Never commit `.env.prod`
 - Database SSL in production
+
+## Observability
+- UI: `/observability` route in the frontend for certainty bands, reward trend lines, and session ingest latency.
+- Environment ports: dev :5173, stage :5174, prod :5175. Ensure the paired backend/API is healthy before reviewing metrics.
+- Backend logging already emits key observability metrics; forward container logs to your aggregator of choice if you need persistence beyond Docker.
+- Screenshot reference: ![Observability Dashboard](../screenshots/observability.png)

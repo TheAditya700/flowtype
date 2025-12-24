@@ -1,5 +1,4 @@
 import io
-import os
 from datetime import datetime
 from typing import Optional
 
@@ -7,39 +6,59 @@ import boto3
 import numpy as np
 from botocore.client import Config
 
+from app.config import settings
+
 # -------------------------------------------------------------------
-# Configuration (via environment variables)
+# Configuration defaults via settings
 # -------------------------------------------------------------------
 
-MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
-MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
-MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
-MINIO_BUCKET = os.getenv("MINIO_BUCKET", "ml-artifacts")
-MINIO_REGION = os.getenv("MINIO_REGION", "us-east-1")
+MINIO_ENDPOINT = settings.minio_endpoint
+MINIO_ACCESS_KEY = settings.minio_access_key
+MINIO_SECRET_KEY = settings.minio_secret_key
+MINIO_BUCKET = settings.data_bucket_dev
+MINIO_REGION = settings.minio_region
 
 # -------------------------------------------------------------------
 # Client factory
 # -------------------------------------------------------------------
 
-def get_s3_client():
-    """
-    Returns an S3-compatible client for MinIO.
-    """
-    # Configure boto3 for MinIO compatibility
+def get_s3_client(
+    *,
+    endpoint_url: Optional[str] = None,
+    access_key: Optional[str] = None,
+    secret_key: Optional[str] = None,
+    region_name: Optional[str] = None,
+):
+    """Return an S3-compatible client for MinIO with optional overrides."""
+
     config = Config(
         signature_version="s3v4",
-        s3={"addressing_style": "path"},  # Use path-style addressing for MinIO
+        s3={"addressing_style": "path"},
     )
-    
+
     return boto3.client(
         "s3",
-        endpoint_url=MINIO_ENDPOINT,
-        aws_access_key_id=MINIO_ACCESS_KEY,
-        aws_secret_access_key=MINIO_SECRET_KEY,
-        region_name=MINIO_REGION,
+        endpoint_url=endpoint_url or MINIO_ENDPOINT,
+        aws_access_key_id=access_key or MINIO_ACCESS_KEY,
+        aws_secret_access_key=secret_key or MINIO_SECRET_KEY,
+        region_name=region_name or MINIO_REGION,
         config=config,
-        verify=False,  # Disable SSL verification for MinIO
+        verify=False,
     )
+
+
+def get_endpoint_for_env(env: str) -> str:
+    env = (env or "dev").lower()
+    if env == "stage":
+        return settings.minio_stage_endpoint
+    if env == "prod":
+        return settings.minio_prod_endpoint
+    # Treat offline/dev/default the same
+    return settings.minio_dev_endpoint
+
+
+def get_s3_client_for_env(env: str):
+    return get_s3_client(endpoint_url=get_endpoint_for_env(env))
 
 
 # -------------------------------------------------------------------

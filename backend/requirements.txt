@@ -16,3 +16,4 @@ pytest
 httpx
 boto3
 scipy
+scikit-learn

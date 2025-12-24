@@ -3,6 +3,9 @@
 # ---------------------------------------------------
 FROM node:20-alpine AS builder
 
+ARG VITE_API_URL=http://localhost:8000/api
+ENV VITE_API_URL=${VITE_API_URL}
+
 WORKDIR /app
 
 # Copy package files
@@ -14,7 +17,7 @@ RUN npm ci --prefer-offline --no-audit
 # Copy source
 COPY . .
 
-# Build for production
+# Build for production (VITE_API_URL injected via ENV)
 RUN npm run build
 
 # Production image: serve static files
@@ -28,11 +31,11 @@ RUN npm install -g serve
 # Copy built app from builder
 COPY --from=builder /app/dist ./dist
 
-EXPOSE 3000
+EXPOSE 80
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD wget --quiet --tries=1 --spider http://localhost:3000/ || exit 1
+    CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
 
 # Serve static files
-CMD ["serve", "-s", "dist", "-l", "3000"]
+CMD ["serve", "-s", "dist", "-l", "80"]

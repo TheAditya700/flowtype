@@ -12,7 +12,7 @@ from app.models.db_models import TypingSession, User, Snippet
 from app.ml.user_features import UserFeatureExtractor
 from app.ml.feature_aggregator import update_long_term_features
 from app.ml.lints_agent import agent
-from app.utils.compute_snapshot import compute_model_snapshot, compute_top_interactions, compute_top_certain_uncertain
+from app.utils.compute_snapshot import compute_model_snapshot, compute_top_certain_uncertain
 from app.utils.s3_utils import save_agent_snapshot_to_s3
 from sqlalchemy.sql import func
 import logging, uuid, json
@@ -314,7 +314,6 @@ def create_session(
             # Store current state as "previous" for next time
             agent.snapshot_for_delta()
 
-            top_pos, top_neg = compute_top_interactions(agent)
             top_certain, top_uncertain, top_importance = compute_top_certain_uncertain(agent)
 
             weights_uri = None
@@ -362,8 +361,6 @@ def create_session(
                 mean_delta_precision=snapshot_stats["mean_delta_precision"],
                 fraction_weights_updated=snapshot_stats["fraction_weights_updated"],
 
-                top_positive_interactions=top_pos,
-                top_negative_interactions=top_neg,
                 top_certain_weights=top_certain,
                 top_uncertain_weights=top_uncertain,
                 top_importance_weights=top_importance,

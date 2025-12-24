@@ -1,135 +1,185 @@
 #!/usr/bin/env python3
-"""
-Promote FAISS index and snippet metadata from dev to stage.
+"""Promote FAISS index and metadata from dev → stage using MinIO/S3 buckets."""
 
-This script validates the dev artifacts and copies them to stage if validation passes.
-"""
-import shutil
+from __future__ import annotations
+
 import json
-from pathlib import Path
-import faiss
 import sys
+from datetime import datetime, timezone
+from pathlib import Path
 
-# Paths
-DATA_DIR = Path(__file__).parent.parent / "data"
-DEV_DIR = DATA_DIR / "dev"
-STAGE_DIR = DATA_DIR / "stage"
+import faiss
+from botocore.exceptions import ClientError, EndpointConnectionError
 
-DEV_INDEX = DEV_DIR / "faiss_index.bin"
-DEV_METADATA = DEV_DIR / "snippet_metadata.json"
+from app.config import settings
+from app.utils.s3_data import (
+    download_to_temp,
+    get_env_data_bucket,
+    read_json,
+    upload_bytes,
+)
+from app.utils.s3_utils import _ensure_bucket_exists, get_endpoint_for_env, get_s3_client_for_env
 
-STAGE_INDEX = STAGE_DIR / "faiss_index.bin"
-STAGE_METADATA = STAGE_DIR / "snippet_metadata.json"
+
+DEV_BUCKET = get_env_data_bucket("dev")
+STAGE_BUCKET = get_env_data_bucket("stage")
+INDEX_KEY = settings.faiss_index_key
+METADATA_KEY = settings.snippet_metadata_key
 
 
-def validate_artifacts():
-    """Validate dev artifacts before promotion."""
-    print("🔍 Validating dev artifacts...")
-
-    # Check files exist
-    if not DEV_INDEX.exists():
-        print(f"❌ Error: {DEV_INDEX} not found")
-        return False
-    if not DEV_METADATA.exists():
-        print(f"❌ Error: {DEV_METADATA} not found")
-        return False
-
-    # Validate FAISS index
+def _require_stage_client():
     try:
-        index = faiss.read_index(str(DEV_INDEX))
+        client = get_s3_client_for_env("stage")
+    except EndpointConnectionError as exc:
+        endpoint = get_endpoint_for_env("stage")
+        raise RuntimeError(
+            f"Stage MinIO endpoint {endpoint} is unreachable. Start the stage stack."
+        ) from exc
+
+    try:
+        _ensure_bucket_exists(client, STAGE_BUCKET)
+    except EndpointConnectionError as exc:
+        raise RuntimeError(
+            f"Stage MinIO endpoint {get_endpoint_for_env('stage')} is unreachable. Start the stage stack."
+        ) from exc
+    except ClientError as exc:
+        raise RuntimeError(
+            f"Unable to access stage bucket {STAGE_BUCKET}: {exc}"
+        ) from exc
+    return client
+
+
+def validate_artifacts() -> tuple[str, list[dict[str, object]]]:
+    """Validate dev artifacts before promotion."""
+    print("🔍 Validating dev artifacts…")
+
+    try:
+        index_path = download_to_temp(DEV_BUCKET, INDEX_KEY, env="dev")
+    except (ClientError, EndpointConnectionError) as exc:
+        print(f"❌ Error downloading index from dev bucket: {exc}")
+        return "", []
+
+    try:
+        index = faiss.read_index(index_path)
         vector_count = index.ntotal
         print(f"✅ FAISS index loaded: {vector_count} vectors")
-
         if vector_count == 0:
             print("❌ Error: FAISS index is empty")
-            return False
-    except Exception as e:
-        print(f"❌ Error loading FAISS index: {e}")
-        return False
+            return "", []
+    except Exception as exc:  # pragma: no cover - faiss errors are rare
+        print(f"❌ Error loading FAISS index: {exc}")
+        return "", []
 
-    # Validate metadata
     try:
-        with open(DEV_METADATA) as f:
-            metadata = json.load(f)
+        metadata = read_json(DEV_BUCKET, METADATA_KEY, env="dev")
+    except (ClientError, EndpointConnectionError) as exc:
+        print(f"❌ Error fetching metadata from dev bucket: {exc}")
+        return "", []
 
-        if not isinstance(metadata, list):
-            print("❌ Error: Metadata is not a list")
-            return False
+    if not isinstance(metadata, list):
+        print("❌ Error: Metadata is not a list")
+        return "", []
 
-        snippet_count = len(metadata)
-        print(f"✅ Metadata loaded: {snippet_count} snippets")
+    snippet_count = len(metadata)
+    print(f"✅ Metadata loaded: {snippet_count} snippets")
 
-        if snippet_count == 0:
-            print("❌ Error: Metadata is empty")
-            return False
+    if snippet_count == 0:
+        print("❌ Error: Metadata is empty")
+        return "", []
 
-        # Check vector count matches metadata count
-        if vector_count != snippet_count:
-            print(
-                f"❌ Error: Vector count ({vector_count}) doesn't match metadata count ({snippet_count})"
+    if vector_count != snippet_count:
+        print(
+            f"❌ Error: Vector count ({vector_count}) doesn't match metadata count ({snippet_count})"
+        )
+        return "", []
+
+    required_fields = ["id", "words"]
+    for i, item in enumerate(metadata[:5]):
+        if not all(field in item for field in required_fields):
+            print(f"❌ Error: Metadata entry {i} missing required fields")
+            return "", []
+
+    print("✅ Metadata structure validated")
+    return index_path, metadata
+
+
+def backup_stage(stage_client) -> None:
+    """Backup existing stage objects into a timestamped prefix."""
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    backed_up = False
+
+    for key, content_type in (
+        (INDEX_KEY, "application/octet-stream"),
+        (METADATA_KEY, "application/json"),
+    ):
+        try:
+            obj = stage_client.get_object(Bucket=STAGE_BUCKET, Key=key)
+        except ClientError as exc:
+            code = (
+                exc.response.get("Error", {}).get("Code")
+                if hasattr(exc, "response")
+                else None
             )
-            return False
+            if code in {"404", "NoSuchKey", "NotFound"}:
+                continue
+            raise
 
-        # Validate metadata structure
-        required_fields = ["id", "words", "difficulty"]
-        for i, item in enumerate(metadata[:5]):  # Check first 5
-            if not all(field in item for field in required_fields):
-                print(f"❌ Error: Snippet {i} missing required fields")
-                return False
+        backup_key = f"backups/{timestamp}/{key}"
+        upload_bytes(
+            STAGE_BUCKET,
+            backup_key,
+            obj["Body"].read(),
+            content_type=content_type,
+            s3=stage_client,
+        )
+        print(f"✅ Backed up s3://{STAGE_BUCKET}/{key} → s3://{STAGE_BUCKET}/{backup_key}")
+        backed_up = True
 
-        print("✅ Metadata structure validated")
-
-    except Exception as e:
-        print(f"❌ Error loading metadata: {e}")
-        return False
-
-    return True
-
-
-def backup_stage():
-    """Backup existing stage artifacts if they exist."""
-    if STAGE_INDEX.exists() or STAGE_METADATA.exists():
-        print("📦 Backing up existing stage artifacts...")
-        backup_dir = STAGE_DIR / "backup"
-        backup_dir.mkdir(exist_ok=True)
-
-        if STAGE_INDEX.exists():
-            shutil.copy2(STAGE_INDEX, backup_dir / "faiss_index.bin.bak")
-            print(f"✅ Backed up {STAGE_INDEX}")
-
-        if STAGE_METADATA.exists():
-            shutil.copy2(STAGE_METADATA, backup_dir / "snippet_metadata.json.bak")
-            print(f"✅ Backed up {STAGE_METADATA}")
+    if not backed_up:
+        print("ℹ️ No existing stage artifacts to back up.")
 
 
-def promote():
-    """Copy dev artifacts to stage."""
-    print("🚀 Promoting to stage...")
+def promote(stage_client, index_path: str, metadata: list[dict[str, object]]) -> None:
+    """Copy dev artifacts to the stage bucket."""
+    print("🚀 Promoting to stage…")
 
-    STAGE_DIR.mkdir(exist_ok=True)
+    index_bytes = Path(index_path).read_bytes()
+    upload_bytes(STAGE_BUCKET, INDEX_KEY, index_bytes, s3=stage_client)
+    print(f"✅ Uploaded FAISS index to s3://{STAGE_BUCKET}/{INDEX_KEY}")
 
-    shutil.copy2(DEV_INDEX, STAGE_INDEX)
-    print(f"✅ Copied {DEV_INDEX} → {STAGE_INDEX}")
+    metadata_bytes = json.dumps(metadata, indent=2).encode("utf-8")
+    upload_bytes(
+        STAGE_BUCKET,
+        METADATA_KEY,
+        metadata_bytes,
+        content_type="application/json",
+        s3=stage_client,
+    )
+    print(f"✅ Uploaded metadata to s3://{STAGE_BUCKET}/{METADATA_KEY}")
 
-    shutil.copy2(DEV_METADATA, STAGE_METADATA)
-    print(f"✅ Copied {DEV_METADATA} → {STAGE_METADATA}")
 
-
-def main():
+def main() -> None:
     print("=" * 60)
     print("PROMOTE DEV → STAGE")
     print("=" * 60)
 
-    # Validate
-    if not validate_artifacts():
+    index_path, metadata = validate_artifacts()
+    if not index_path:
         print("\n❌ Validation failed. Aborting promotion.")
         sys.exit(1)
 
-    # Backup
-    backup_stage()
+    try:
+        stage_client = _require_stage_client()
+    except RuntimeError as exc:
+        Path(index_path).unlink(missing_ok=True)
+        print(f"\n❌ {exc}")
+        sys.exit(1)
 
-    # Promote
-    promote()
+    try:
+        backup_stage(stage_client)
+        promote(stage_client, index_path, metadata)
+    finally:
+        Path(index_path).unlink(missing_ok=True)
 
     print("\n" + "=" * 60)
     print("✅ Promotion complete!")

@@ -7,6 +7,7 @@ import {
   Trophy,
   User,
   LogOut,
+  Bot,
 } from "lucide-react";
 import { useSessionMode } from "../context/SessionModeContext";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -91,7 +92,7 @@ const Header: React.FC<HeaderProps> = ({ isPaused, sessionStarted }) => {
                 : "text-text-subtle hover:text-text hover:bg-gray-700"
             }`}
           >
-            <Trophy size={16} />
+            <Trophy size={15} />
             <span className="text-sm">leaderboard</span>
           </button>
 
@@ -115,8 +116,8 @@ const Header: React.FC<HeaderProps> = ({ isPaused, sessionStarted }) => {
                 : "text-text-subtle hover:text-text hover:bg-gray-700"
             }`}
           >
-            <BarChart3 size={16} />
-            <span className="text-sm">observability</span>
+            <Bot size={17} />
+            <span className="text-sm">model</span>
           </button>
         </nav>
       </div>

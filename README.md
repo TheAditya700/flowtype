@@ -1,249 +1,249 @@
 # NerdType
 
-Adaptive typing practice with a contextual bandit, FAISS retrieval, and keystroke-level telemetry across WPM, accuracy, smoothness, and rollover.
+**Adaptive typing practice powered by keystroke-level telemetry, contextual bandits, and interpretable motor-skill modeling.**
 
-NerdType is a personal research + product project exploring adaptive difficulty and motor-skill learning using real keystroke telemetry.
+NerdType is a research-driven typing trainer that adapts snippet difficulty in real time using explicit, interpretable signals from keystroke dynamics rather than opaque end-to-end models.
 
-The system is intentionally **interpretability-first**, drawing from research in human motor learning and typing dynamics rather than opaque end-to-end models. Adaptation is driven by explicit, inspectable signals—inter-key intervals, rollover, chunking, and error dynamics—that are surfaced directly to both the user and the learning algorithm.
+The system is designed **interpretability-first**: every adaptation step is grounded in observable timing metrics such as inter-key intervals, rollover behavior, chunking, and error dynamics, all of which are surfaced both to the user and the learning algorithm.
 
-This design choice follows prior work showing that fine-grained keystroke timing contains rich, stable structure for modeling skill, learning, and cognition.
+---
 
-## Why NerdType?
+## Why NerdType
 
-**Traditional typing trainers** (Monkeytype, TypeRacer) are static:
-- Same word lists for everyone
-- No adaptation to your weaknesses
-- WPM-only optimization (ignores typing quality)
+Traditional typing trainers (Monkeytype, TypeRacer) are largely static:
+- Same word lists for all users
+- Little adaptation to individual weaknesses
+- Optimization focused almost entirely on WPM
 
-**NerdType adapts to you:**
-- Personalized snippet difficulty based on your skill profile
-- Optimizes for motor learning: accuracy → smoothness → speed
-- Exposes rich metrics (rollover, IKI variance, chunking) that reveal how you actually type
-- Contextual bandit learns which text patterns challenge you productively
+**NerdType adapts to how you actually type:**
+- Personalized snippet selection based on a learned user skill state
+- Optimization prioritizes **accuracy → smoothness → speed**, mirroring motor learning
+- Rich metrics beyond WPM: IKI variance, spike rate, rollover, chunk length, per-hand fluency
+- A contextual bandit continuously learns which text patterns challenge you productively
 
-## Research foundations
+---
 
-NerdType’s metric design and adaptation loop are grounded in established research on typing dynamics, motor control, and keystroke timing:
+## Research grounding
 
-- **Yin et al. (CHI 2018)** — *“How Do We Type? Movement Strategies and Performance in Everyday Typing”*  
-  https://userinterfaces.aalto.fi/136Mkeystrokes/resources/chi-18-analysis.pdf  
-  Large-scale analysis of **136 million keystrokes** from everyday typing.  
-  Demonstrates that expert performance emerges from **rhythmic timing, rollover behavior, chunked motor plans, and reduced variance**, motivating NerdType’s emphasis on IKIs, rollover, chunk length, and smoothness rather than WPM alone.
+NerdType’s metrics and adaptation loop are informed by established work in typing dynamics and motor control:
 
-- **Logan & Crump (2011)** — *“Hierarchical control of cognitive processes: The case for skilled typewriting”*  
-  https://www.sciencedirect.com/science/chapter/bookseries/abs/pii/B9780123855275000012  
-  Shows that expert typing is governed by **hierarchical motor programs**, not character-level cognition, directly motivating NerdType’s chunking, fluency, rollover, and per-hand metrics.
+- **Yin et al., CHI 2018**  
+  Large-scale analysis of 136M keystrokes showing expert performance emerges from rhythmic timing, rollover behavior, chunked motor plans, and reduced variance.
 
-- **Killourhy & Maxion (2009)** — *“Comparing anomaly-detection algorithms for keystroke dynamics”*  
-  https://ieeexplore.ieee.org/document/5270346  
-  Establishes that **inter-key interval distributions and variance** are stable, information-rich signals, supporting the use of IKI CV and spike-rate as core smoothness metrics.
+- **Logan & Crump, 2011**  
+  Demonstrates hierarchical motor control in skilled typing, motivating chunk-level and fluency-based metrics.
 
-Together, these works motivate NerdType’s focus on **interpretable timing-based signals and bounded, incremental adaptation**, rather than black-box sequence models.
+- **Killourhy & Maxion, 2009**  
+  Shows inter-key interval distributions are stable and information-rich signals for modeling skill.
 
-## Retrieval + decision architecture (two-tower + bandit)
-- Two-tower setup: snippet tower (PCA to 16-dim) and user tower (130-dim state: EMA, variance, prev snippet). The LinTS bandit samples a weight matrix to map the user state to a query vector in snippet space.
-- Retrieval: FAISS nearest neighbors on the sampled query vector, then light filtering (recent/current snippets) with probabilistic selection via softmax. Closer snippets get higher probability, but exploration is maintained through temperature control.
-- Policy: The bandit learns which regions of snippet space to explore/exploit given the user embedding, effectively ranking snippets for the current motor-skill state. Two layers of stochasticity: Thompson sampling in query generation + softmax sampling in retrieval.
+These findings motivate NerdType’s focus on **timing-based, interpretable signals** rather than black-box sequence models.
 
-## Dimensionality control
+---
 
-Snippet embeddings are projected to **16 dimensions via PCA** before FAISS retrieval and bandit decisions.
+## System overview
 
-**Explained variance (empirical):**
-- 8 components → ~74%
-- **16 components → ~97%**
-- 32 components → ~100% (marginal)
+### Architecture
+- **Backend**: FastAPI, Postgres, FAISS
+- **Frontend**: React + Vite
+- **Storage**: Postgres (state), MinIO (artifacts)
+- **Learning**: Diagonal Linear Thompson Sampling (LinTS)
 
-Components beyond 16 contribute little signal and increase noise from rare n-grams.
+### Core loop
+1. Build a **130-dim user state** (EMA skill + variance + recent difficulty context)
+2. Thompson-sample bandit weights to generate a query vector
+3. Retrieve candidate snippets via FAISS (16-dim PCA embedding)
+4. Sample snippets probabilistically for controlled exploration
+5. Collect keystroke telemetry and compute session metrics
+6. Compute reward vs EMA baseline and update the bandit
 
-**Why 16D**
-The LinTS bandit learns a linear reward model over **user state × snippet embedding**. Higher dimensionality:
-- Increases parameter count and posterior variance
-- Requires more data to stabilize priors
-- Destabilizes early Thompson sampling
+---
 
-Restricting to 16D:
-- Bounds the hypothesis space
-- Improves sample efficiency under sparse feedback
-- Stabilizes posterior estimates during exploration
+## Representation choices
 
-## User state
+### Snippet embeddings
+- Snippet features are projected to **16 dimensions via PCA**
+- 16D captures ~97% variance while keeping the bandit stable and sample-efficient
+- Higher dimensions increased posterior variance and destabilized exploration
 
-Users are represented by an explicit **130-dimensional state vector** capturing skill, stability, and recent difficulty context.
+### User state (130D)
+- **57D EMA**: long-term skill baseline
+- **57D stddev**: short-term variability / consistency
+- **16D previous snippet embedding**: smooth curriculum transitions
 
-**State =**
-- **57D EMA** — long-term skill baseline (speed, accuracy, smoothness, rollover, fluency)
-- **57D stddev** — short-term variability (consistency / control)
-- **16D previous snippet embedding** — recent difficulty context
+This separation prevents overreaction to single sessions and reduces difficulty oscillation.
 
-**Why this structure**
-- EMA + variance separates *skill* from *stability*
-- Prevents overreaction to single sessions
-- Previous snippet embedding reduces difficulty oscillation and enables smooth curriculum transitions
+---
 
-## Custom hierarchical reward / loss
-- Custom hierarchical reward (in `app/ml/lints_agent.py`) balances accuracy, smoothness (IKI CV + spike rate), and effective WPM. Deltas are taken against the user’s EMA baselines and clipped to avoid runaway updates.
-- Reward terms are layered: accuracy first, then accuracy × consistency, then accuracy × consistency × speed, scaled to keep gradients stable. This mirrors a task loss where correctness dominates, fluency refines, and speed is last-mile.
-- The shape of the reward encourages smoother, lower-variance typing before pushing raw speed, aligning with the motor-learning goal instead of pure WPM leaderboard chasing.
+## Learning objective (hierarchical reward)
 
-### Hierarchical Reward Function
+The bandit optimizes a **hierarchical reward** aligned with motor learning:
 
-The bandit uses a hierarchical reward that prioritizes correctness and fluency before speed.
-```
-R = reward_scale * [ w1 * dA
-                   + w2 * (dA * dC)
-                   + w3 * (dA * dC * dS) ]
-```
+``&
+R = scale * [ w1 * dA
+            + w2 * (dA * dC)
+            + w3 * (dA * dC * dS) ]
+``&
 
 Where:
-- `dA` = change in accuracy
-- `dC` = change in consistency (smoothness)
-- `dS` = change in effective WPM
+- `dA`: accuracy delta vs EMA
+- `dC`: smoothness delta (IKI CV + spike rate)
+- `dS`: effective WPM delta
 
-All deltas are clipped against EMA baselines.
+Low accuracy suppresses downstream rewards, preventing speed optimization at the cost of correctness.
 
-This multiplicative structure creates soft gating: low accuracy nullifies smoothness/speed rewards, preventing the model from optimizing speed at the cost of correctness.
-
-**Defaults:**
-- `w1 = 1.0`
-- `w2 = 0.7`
-- `w3 = 0.4`
-- `reward_scale = 20`
-
-## Headlines
-- Metric-first typing surface: WPM, raw WPM, accuracy, smoothness (IKI CV + spike-rate), rollover, and per-hand fluency from every session.
-- Contextual bandit (LinTS) steers snippet selection with a 16-dim embedding and a 130-dim user state (EMA + variance + previous snippet).
-- Full keystroke telemetry feeds dashboards (speed series, replay events, heatmaps) and keeps the model reward grounded in user behavior.
+---
 
 ## Screenshots
-<br>
 
-![Typing Surface](screenshots/type.png)  
-**Typing surface** — Adaptive snippet selection with real-time keystroke capture; every keydown/keyup feeds IKI, rollover, and chunking metrics used by the model.
-<br>
-<br>
+### Typing surface
+![Typing surface](screenshots/type.png)
 
-![Session Results](screenshots/results.png)  
-**Session results** — Post-session breakdown of WPM vs raw WPM, accuracy, smoothness, rollover, and flow metrics derived directly from keystroke timing.
-<br>
-<br>
+Adaptive snippet selection with real-time keystroke capture. Every keydown and keyup feeds IKI, rollover, and chunking metrics used by the model.
 
-![Stats Dashboard](screenshots/stats.png)  
-**Stats dashboard** — Longitudinal view of speed, accuracy, and fluency trends with EMA smoothing, enabling users to see exactly how the model perceives their skill over time.
-<br>
-<br>
+---
 
-![Leaderboard](screenshots/leaderboard.png)  
-**Leaderboard** — Mode-specific rankings with anonymized users supported; shows best WPMs tracked per timed mode.
-<br>
-<br>
+### Session results
+![Session results](screenshots/results.png)
 
-![Wiki](screenshots/wiki.png)  
-**Wiki** — Reference view with key bindings, modes, and guidance to help users interpret the metrics.
-<br>
-<br>
+Post-session breakdown of WPM vs raw WPM, accuracy, smoothness, rollover, and fluency metrics derived directly from keystroke timing.
 
-## What the system does
-- Serves adaptive typing snippets via FastAPI + FAISS, guided by a LinTS contextual bandit.
-- Collects keystroke-by-keystroke telemetry to compute WPM, raw WPM, accuracy, smoothness, rollover, and fluency per hand/cross-hand.
-- Updates user feature EMAs after each session and persists them to Postgres for cold-start recovery.
-- Returns rich session analytics (speed timeline, replay events, heatmap) to the frontend for immediate feedback.
+---
 
-## Learning & decision-making
-- **Bandit**: Diagonal Linear Thompson Sampling (`app/ml/lints_agent.py`) with hierarchical reward on accuracy, smoothness (IKI CV + spike rate), and effective WPM.
-- **Embeddings**: 16-dim PCA snippet embeddings queried through FAISS (`app/ml/vector_store.py`), stored in Postgres and exported to on-disk index/metadata. 
-- **User state**: 57-dim EMA + 57-dim stddev + previous snippet embedding → 130-dim context passed to the bandit.
-- **Reward**: Baseline from EMA, deltas on accuracy/smoothness/eff. WPM scaled and clipped to avoid exploding updates.
-- **Persistence**: Bandit weights saved to `app/ml/lints_model.pkl`; user feature EMA/variance persisted in the `User` row.
+### Stats dashboard
+![Stats dashboard](screenshots/stats.png)
 
-## Metrics we expose
-- `wpm`, `rawWpm`, `accuracy`, `errors` per session.
-- `smoothness` from global IKI CV and spike rate; `avgIki` and spike counts underneath.
-- Rollover rates overall plus `rolloverL2L`, `rolloverR2R`, `rolloverCross`; fluency scores per hand (`leftFluency`, `rightFluency`, `crossFluency`).
-- `kspc`, `avgChunkLength`, speed timeline (`speedSeries`), and replay events (`replayEvents`) with chunk boundaries and rollovers.
-- Best WPMs tracked per timed mode (15/30/60/120s).
+Longitudinal view of speed, accuracy, and fluency trends with EMA smoothing, showing how the model perceives skill over time.
 
-## How adaptation works
-- Build user context: load EMA/stddev from Postgres (or zeros), include previous snippet embedding if available.
-- Thompson sample bandit weights → query vector (16-dim) → FAISS search top-k.
-- Filter out current + recent snippet ids; sample probabilistically from filtered candidates using softmax over distances (temperature=2.0).
-- Return chosen snippet plus predicted WPM/accuracy/consistency from the EMA vector.
-- After session: compute keystroke metrics, update EMA/variance, compute reward vs pre-session EMA, and update the bandit.
+---
 
-## Data & pipeline
-- Postgres stores users, snippets (with embeddings), sessions, and keystroke events.
-- Keystroke ingestion (`/api/sessions`) computes IKIs, spike rate, rollovers, transitions, and per-char stats via `UserFeatureExtractor`.
-- FAISS index build: `python scripts/build_index.py --env dev` from `backend/` (uses snippet embeddings already in DB; stage/prod also supported). For first-time setup, run `python scripts/bootstrap_env.py --env dev` to generate snippets, populate the DB, and build the index in one pass.
-- Snippet utilities live in `backend/scripts/` (seed data, init db, condense embeddings, etc.).
+### Leaderboard
+![Leaderboard](screenshots/leaderboard.png)
 
-## Evaluation & correctness
-- Reward grounded in deltas vs EMA baselines to avoid runaway difficulty; clip deltas to keep updates bounded.
-- Smoothness and fluency come from raw IKIs and rollover detection (press before prior keyup) per session.
-- Smoke tests: `cd backend && pytest` for retrieval and difficulty routines.
-- Health check: `GET /api/health` and FastAPI docs at `/docs`.
+Mode-specific rankings with anonymized users and best WPMs tracked per timed mode.
+
+---
+
+### Reference / Wiki
+![Wiki](screenshots/wiki.png)
+
+Metric definitions, modes, and guidance to help users interpret what the system measures and why.
+
+---
+
+### Observability dashboard
+![Observability dashboard](screenshots/observability.png)
+
+Learning health view exposing reward stability, posterior confidence, and feature-level certainty so model behavior can be debugged in-product.
+
+---
+
+## Metrics exposed
+
+Per session:
+- WPM, raw WPM, accuracy, errors
+- Smoothness (IKI CV + spike rate)
+- Rollover rates (overall, L2L, R2R, cross)
+- Per-hand fluency
+- Chunk length, KSPC
+- Speed timeline, replay events, keyboard heatmaps
+
+Long-term:
+- EMA skill trends
+- Best WPMs per timed mode
+- Bandit reward and confidence dynamics
+
+---
 
 ## Observability
-- **What we log today**: session ingestion stats (WPM, accuracy), rollout metrics (IKI CV, spike rate, rollover), and agent rewards on update paths.
-- **What we would alert on**: high 5xx on `/sessions` or `/snippets/retrieve`, empty FAISS responses, reward collapse (nan/zero drift), spike-rate blowups, and long-tail latencies on snippet retrieval.
-- **Product analytics**: Umami snippet in `frontend/index.html` (optional, self-hosted) for basic page views; expand to event-level later.
 
-## API/type contracts (drift plan)
-- Backend OpenAPI is the source of truth. Frontend TS types in `src/types` are maintained manually and reviewed alongside backend changes.
-- To avoid drift: keep PRs that touch API schemas paired with TS type updates; rely on backend validation errors during dev builds.
-- At scale: generate a typed client from OpenAPI (e.g., openapi-typescript) and gate merges on type checks.
+NerdType includes an **in-app observability dashboard** focused on learning health:
+- Posterior confidence and convergence
+- Reward stability and drift
+- Session volume and latency
+- Interpretable user-skill components ranked by impact, certainty, and uncertainty
+
+This makes model behavior inspectable without digging into raw weights.
+
+---
 
 ## Running locally
-- Prereqs: Python 3.11+, Node 20+, Postgres 15+.
-- Backend:
-  ```bash
-  cd backend
-  cp .env.example .env   # edit SECRET_KEY and DATABASE_URL if needed
-  python -m venv .venv && source .venv/bin/activate
-  pip install -r requirements.txt
-  alembic upgrade head
-  # One-shot bootstrap (generate → populate DB → build index)
-  python scripts/bootstrap_env.py --env dev
-  uvicorn app.main:app --host 0.0.0.0 --port 8000
-  ```
-- Frontend:
-  ```bash
-  cd frontend
-  npm install
-  VITE_API_URL=http://localhost:8000/api npm run dev -- --host
-  ```
-- Environment knobs: `DATABASE_URL`, `SECRET_KEY`, `FAISS_INDEX_PATH`/`SNIPPET_METADATA_PATH` (see `app/config.py`).
 
-## Running via Docker
-- **Dev** (default): `docker-compose up` → Frontend :5173, Backend :8000, DB :5432
-- **Stage**: `docker-compose -f docker-compose.stage.yml up` → Frontend :5174, Backend :8001, DB :5433
-- **Prod**: `docker-compose -f docker-compose.prod.yml up` → Frontend :5175, Backend :8002, DB :5434
-- Each environment has isolated database and FAISS indices in `backend/data/{dev|stage|prod}/`
-- First-time (fresh volume): after the stack is healthy, run migrations and bootstrap inside each backend container:
-  - Dev: `docker-compose exec backend_dev alembic upgrade head && python scripts/bootstrap_env.py --env dev`
-  - Stage: `docker-compose -f docker-compose.stage.yml exec backend_stage alembic upgrade head && python scripts/bootstrap_env.py --env stage`
-  - Prod: `docker-compose -f docker-compose.prod.yml exec backend_prod alembic upgrade head && python scripts/bootstrap_env.py --env prod`
+### Backend
 
-## Deployment and promotion
-- See `docs/deployment.md` for full environment management guide
-- **Dev → Stage**: `python backend/scripts/promote_to_stage.py` (validates + copies artifacts)
-- **Stage → Prod**: `python backend/scripts/promote_to_prod.py` (requires manual confirmation)
-- **Build index**: `python backend/scripts/build_index.py --env {dev|stage|prod}`
-- Automatic backups created before each promotion; rollback documented in deployment guide
+Prereqs: Postgres + MinIO reachable at the endpoints in `backend/.env`. The easiest way is to run the dev stack services in Docker (they expose Postgres on :5432 and MinIO on :9000/:9001):
+
+```bash
+docker compose up postgres_dev minio-dev
+```
+
+Then bootstrap the backend (from the repo root):
+
+```bash
+cd backend
+cp .env.example .env
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+alembic upgrade head
+python scripts/migrate_data_to_minio.py
+python scripts/bootstrap_env.py --env dev
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+`migrate_data_to_minio.py` seeds the required MinIO buckets (you may see warnings for stage/prod if those stacks are offline—safe to ignore).
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+VITE_API_URL=http://localhost:8000/api npm run dev -- --host
+```
+
+---
+
+## Running with Docker
+
+```bash
+docker compose up
+```
+
+- Frontend: http://localhost:5173  
+- Backend: http://localhost:8000  
+- MinIO: http://localhost:9001  
+
+First-time setup (inside backend container):
+```bash
+docker compose exec backend_dev python scripts/migrate_data_to_minio.py
+docker compose exec backend_dev alembic upgrade head
+docker compose exec backend_dev python scripts/bootstrap_env.py --env dev
+```
+
+---
 
 ## Design principles
-- Measurement before magic: every adaptation step is tied to observable keystroke metrics.
-- Bounded exploration: Thompson sampling with minimum variance and clipped rewards.
-- Fast feedback: per-session analytics (speed series, replay events) surface what the model sees.
-- Resilient defaults: cold start uses neutral EMA baselines and filters recent snippets.
 
-## FAQ
-- **What happens if FAISS is empty?** We retry with a random vector; if still empty, return 404.
-- **Where is state stored?** User EMA/variance in Postgres; bandit weights in `app/ml/lints_model.pkl`; FAISS index/metadata in `backend/data`.
-- **How do I change snippet data?** Update rows in Postgres, then rerun `python scripts/build_index.py --env dev`.
-- **How do I point the frontend elsewhere?** Set `VITE_API_URL` before `npm run dev/build`.
+- **Measurement before magic**: every adaptation is tied to observable metrics
+- **Bounded exploration**: Thompson sampling with clipped rewards
+- **Interpretability first**: no opaque end-to-end policies
+- **Stable learning**: EMA baselines and variance-aware updates
 
-## Model & data lifecycle
+---
+
+## Highlights
+
+- Applies contextual bandits to **motor-skill learning**, not clicks or ads
+- Uses keystroke-level telemetry as a first-class signal
+- Demonstrates careful reward shaping and posterior diagnostics
+- Treats observability as part of the product, not an afterthought
+
+---
+
+## Environment separation and MLOps lifecycle
 - See `docs/model_lifecycle.md` for FAISS rebuilds, bandit state persistence, cold start defaults, and rollback guidance.
+
+NerdType follows a **production-grade MLOps workflow** with explicit **dev / stage / prod isolation**. Each environment runs in its own Docker Compose stack with **separate Postgres databases, FAISS indices, and MinIO object storage**, ensuring clean experimentation and reproducibility. Model artifacts (bandit weights, FAISS indices, snippet metadata) are **versioned and promoted explicitly** via scripted pipelines rather than rebuilt implicitly. Promotion flows (`dev → stage → prod`) include validation, snapshotting, and rollback guarantees as documented in `docs/deployment.md`. This design mirrors real-world ML systems by enforcing environment isolation, controlled artifact promotion, and debuggable model evolution rather than ad-hoc retraining.
+
+---
 
 ## Project structure
 ```
@@ -282,20 +282,25 @@ This multiplicative structure creates soft gating: low accuracy nullifies smooth
 │   │   │   └── vector_store.py
 │   │   ├── models
 │   │   │   ├── __init__.py
+│   │   │   ├── agent_models.py
 │   │   │   ├── db_models.py
 │   │   │   └── schema.py
 │   │   ├── routers
 │   │   │   ├── __init__.py
+│   │   │   ├── admin.py
 │   │   │   ├── auth.py
 │   │   │   ├── health.py
+│   │   │   ├── observability.py
 │   │   │   ├── profile_merge.py
 │   │   │   ├── sessions.py
 │   │   │   ├── snippets.py
 │   │   │   └── users.py
 │   │   └── utils
 │   │       ├── __init__.py
+│   │       ├── compute_snapshot.py
 │   │       ├── metrics.py
-│   │       └── preprocessing.py
+│   │       ├── s3_data.py
+│   │       └── s3_utils.py
 │   ├── data
 │   │   ├── dev
 │   │   │   ├── faiss_index.bin
@@ -312,6 +317,7 @@ This multiplicative structure creates soft gating: low accuracy nullifies smooth
 │   │   └── stage
 │   ├── Dockerfile
 │   ├── Dockerfile.train
+│   ├── print_routes.py
 │   ├── requirements.txt
 │   ├── scripts
 │   │   ├── analyze_data.py
@@ -322,10 +328,12 @@ This multiplicative structure creates soft gating: low accuracy nullifies smooth
 │   │   ├── condense_snippet_embeddings.py
 │   │   ├── debug_difficulty.py
 │   │   ├── init_db.py
+│   │   ├── migrate_data_to_minio.py
 │   │   ├── prepare_telemetry_batches.py
 │   │   ├── promote_to_prod.py
 │   │   ├── promote_to_stage.py
 │   │   └── seed_data.py
+│   ├── test_observability.py
 │   └── tests
 │       ├── conftest.py
 │       ├── test_api.py
@@ -333,10 +341,12 @@ This multiplicative structure creates soft gating: low accuracy nullifies smooth
 │       ├── test_lints_agent.py
 │       ├── test_metrics.py
 │       └── test_user_features.py
+├── dashboard_plan.md
 ├── docker-compose.dev.yml
 ├── docker-compose.prod.yml
 ├── docker-compose.stage.yml
 ├── docker-compose.yml
+├── Dockerfile.minio
 ├── docs
 │   ├── deployment.md
 │   ├── infra.md
@@ -366,6 +376,14 @@ This multiplicative structure creates soft gating: low accuracy nullifies smooth
 │   │   │   │   ├── SkillBars.tsx
 │   │   │   │   └── SpeedGraph.tsx
 │   │   │   ├── Header.tsx
+│   │   │   ├── observability
+│   │   │   │   ├── AgentEffectivenessChart.tsx
+│   │   │   │   ├── FeatureImportanceWidget.tsx
+│   │   │   │   ├── LearningActivityChart.tsx
+│   │   │   │   ├── LearningHealthChart.tsx
+│   │   │   │   ├── ObservabilityHeader.tsx
+│   │   │   │   ├── PerformanceDeltasChart.tsx
+│   │   │   │   └── WeightsUpdatedGauge.tsx
 │   │   │   ├── TypingZone.tsx
 │   │   │   ├── TypingZoneStatsDisplay.tsx
 │   │   │   └── UserMenu.tsx
@@ -384,6 +402,7 @@ This multiplicative structure creates soft gating: low accuracy nullifies smooth
 │   │   │   ├── ChangeUsernamePage.tsx
 │   │   │   ├── DeleteAccountPage.tsx
 │   │   │   ├── LeaderboardPage.tsx
+│   │   │   ├── ObservabilityPage.tsx
 │   │   │   ├── StatsPage.tsx
 │   │   │   └── WikiPage.tsx
 │   │   ├── types
@@ -392,7 +411,10 @@ This multiplicative structure creates soft gating: low accuracy nullifies smooth
 │   │   └── utils
 │   │       ├── anonymousUser.ts
 │   │       ├── canvas.ts
-│   │       └── storage.ts
+│   │       ├── chartUtils.ts
+│   │       ├── featureNames.ts
+│   │       ├── storage.ts
+│   │       └── suppressRechartsWarnings.ts
 │   ├── tailwind.config.js
 │   ├── tsconfig.json
 │   ├── tsconfig.node.json
@@ -400,6 +422,7 @@ This multiplicative structure creates soft gating: low accuracy nullifies smooth
 ├── README.md
 └── screenshots
     ├── leaderboard.png
+    ├── observability.png
     ├── results.png
     ├── stats.png
     ├── type.png
@@ -408,4 +431,4 @@ This multiplicative structure creates soft gating: low accuracy nullifies smooth
 
 ## Contributing
 
-Contributions welcome! Please fork, create a feature branch, and submit a PR.
+Contributions welcome. Please fork the repository, create a feature branch, and submit a PR.

@@ -138,9 +138,7 @@ class ModelSnapshots(Base):
     mean_delta_precision = Column(Float, nullable=False)
     fraction_weights_updated = Column(Float, nullable=False)
 
-    # Interpretability
-    top_positive_interactions = Column(JSON, nullable=False)
-    top_negative_interactions = Column(JSON, nullable=False)
+    # Interpretability (legacy interactions removed)
     top_certain_weights = Column(JSON, nullable=True)  # Top 10 most certain (high precision, high contribution)
     top_uncertain_weights = Column(JSON, nullable=True)  # Top 10 most uncertain (low precision, high contribution)
     top_importance_weights = Column(JSON, nullable=True)  # Top 10 by actual contribution to predictions

@@ -63,6 +63,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile  # Production build
+      args:
+        VITE_API_URL: http://localhost:8002/api
     container_name: flowtype_frontend_prod
     ports:
       - "5175:80"

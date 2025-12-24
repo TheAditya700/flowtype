@@ -12,12 +12,14 @@ import random
 from pathlib import Path
 
 from .config import (
-    ENRICHED_WORDLIST_PATH,
-    BIGRAM_PATH,
-    TRIGRAM_PATH,
-    WORD_FEATURES_PATH,
-    SNIPPETS_PATH,
+    ENRICHED_WORDLIST_KEY,
+    BIGRAM_KEY,
+    TRIGRAM_KEY,
+    WORD_FEATURES_KEY,
+    SNIPPETS_KEY,
+    OFFLINE_BUCKET,
 )
+from app.utils.s3_data import read_json, write_json
 
 from app.ml.snippet_features import (
     compute_difficulty_features,
@@ -39,7 +41,7 @@ from app.ml.snippet_features import (
 # }
 # ------------------------------------------------------------
 def load_enriched_wordlist():
-    data = json.loads(ENRICHED_WORDLIST_PATH.read_text())
+    data = read_json(OFFLINE_BUCKET, ENRICHED_WORDLIST_KEY, env="offline")
 
     words = []
     word_freq = {}
@@ -57,8 +59,8 @@ def load_enriched_wordlist():
 # Load n-gram frequency tables (already weighted)
 # ------------------------------------------------------------
 def load_ngram_tables():
-    bigrams = json.loads(BIGRAM_PATH.read_text())
-    trigrams = json.loads(TRIGRAM_PATH.read_text())
+    bigrams = read_json(OFFLINE_BUCKET, BIGRAM_KEY, env="offline")
+    trigrams = read_json(OFFLINE_BUCKET, TRIGRAM_KEY, env="offline")
     return bigrams, trigrams
 
 
@@ -71,7 +73,7 @@ def generate_word_feature_vectors(words):
     for w in words:
         feature_map[w] = compute_difficulty_features(w)
 
-    WORD_FEATURES_PATH.write_text(json.dumps(feature_map, indent=2))
+    write_json(OFFLINE_BUCKET, WORD_FEATURES_KEY, feature_map, env="offline")
     return feature_map
 
 
@@ -103,7 +105,7 @@ def generate_snippets(words, n=20000, min_len=5, max_len=8):
             }
         )
 
-    SNIPPETS_PATH.write_text(json.dumps(snippets, indent=2))
+    write_json(OFFLINE_BUCKET, SNIPPETS_KEY, snippets, env="offline")
     return snippets
 
 
@@ -128,8 +130,8 @@ def run():
     generate_snippets(words)
 
     print("\n✔ Generation complete!")
-    print(f"   → Word features saved to: {WORD_FEATURES_PATH}")
-    print(f"   → Snippets saved to:      {SNIPPETS_PATH}")
+    print(f"   → Word features saved to: s3://{OFFLINE_BUCKET}/{WORD_FEATURES_KEY}")
+    print(f"   → Snippets saved to:      s3://{OFFLINE_BUCKET}/{SNIPPETS_KEY}")
 
 
 if __name__ == "__main__":

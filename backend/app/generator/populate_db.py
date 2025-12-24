@@ -6,12 +6,14 @@ from app.database import engine
 from app.models.db_models import Snippet
 import logging
 from . import config
+from app.utils.s3_data import read_json
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-SNIPPET_FILE = config.SNIPPETS_PATH
+SNIPPET_BUCKET = config.OFFLINE_BUCKET
+SNIPPET_KEY = config.SNIPPETS_KEY
 
 
 def populate_snippet_database(clear_existing=True):
@@ -19,12 +21,12 @@ def populate_snippet_database(clear_existing=True):
     Loads generated snippets.json and inserts them into the Snippet DB.
     """
 
-    if not SNIPPET_FILE.exists():
-        logger.error(f"snippets.json not found at {SNIPPET_FILE}")
+    logger.info("Loading snippets.json from S3 ...")
+    try:
+        snippets = read_json(SNIPPET_BUCKET, SNIPPET_KEY, env="offline")
+    except Exception as e:
+        logger.error(f"Failed to read snippets from S3: {e}")
         return
-
-    logger.info("Loading snippets.json ...")
-    snippets = json.loads(SNIPPET_FILE.read_text())
 
     Session = sessionmaker(bind=engine)
     session = Session()

@@ -252,7 +252,7 @@ const StatsPage: React.FC = () => {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 bg-gray-800 rounded-lg p-1 text-xs font-mono border border-gray-700">
+          <div className="flex items-center gap-2 bg-gray-800 rounded-lg p-1 text-xs font-mono border border-gray-800">
             <button
               onClick={() => setChartMode("wpm")}
               className={`px-3 py-1 rounded-md transition-colors ${chartMode === "wpm" ? "bg-gray-700 text-white" : "text-gray-500 hover:text-gray-200"}`}

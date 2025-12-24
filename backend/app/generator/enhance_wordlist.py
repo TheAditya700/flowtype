@@ -1,13 +1,19 @@
+"""Produce an enriched wordlist and persist it to the offline MinIO bucket."""
+
 import json
+
 from wordfreq import zipf_frequency
+
 from . import config
+from app.utils.s3_data import read_json, write_json
 
-IN_PATH = config.WORDLIST_PATH
-OUT_PATH = config.ENRICHED_WORDLIST_PATH
+IN_KEY = config.WORDLIST_KEY
+OUT_KEY = config.ENRICHED_WORDLIST_KEY
+BUCKET = config.OFFLINE_BUCKET
 
 
-def enhance_wordlist():
-    raw = json.loads(IN_PATH.read_text())
+def enhance_wordlist() -> None:
+    raw = read_json(BUCKET, IN_KEY, env="offline")
     words = raw["words"]
 
     enhanced = []
@@ -20,8 +26,8 @@ def enhance_wordlist():
 
     out = {"name": raw["name"], "size": len(enhanced), "words": enhanced}
 
-    OUT_PATH.write_text(json.dumps(out, indent=2))
-    print(f"Saved enriched wordlist → {OUT_PATH}")
+    write_json(BUCKET, OUT_KEY, out, env="offline")
+    print(f"Saved enriched wordlist → s3://{BUCKET}/{OUT_KEY}")
 
 
 if __name__ == "__main__":

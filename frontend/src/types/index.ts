@@ -204,8 +204,8 @@ export interface SessionResponse {
 export interface ObservabilityHeader {
   total_sessions: number;
   active_users: number;
+  sessions_last_24h: number;
   model_version: string;
-  last_snapshot_time: string | null;
 }
 
 export interface LearningHealthPoint {
@@ -215,7 +215,7 @@ export interface LearningHealthPoint {
 }
 
 export interface LearningHealthResponse {
-  timeframe: string;
+  scale: string;
   points: LearningHealthPoint[];
 }
 
@@ -228,7 +228,7 @@ export interface AgentEffectivenessPoint {
 }
 
 export interface AgentEffectivenessResponse {
-  timeframe: string;
+  scale: string;
   points: AgentEffectivenessPoint[];
 }
 
@@ -243,24 +243,26 @@ export interface PerformanceDeltaPoint {
 }
 
 export interface PerformanceDeltasResponse {
-  timeframe: string;
+  scale: string;
   points: PerformanceDeltaPoint[];
 }
 
 export interface UserSkill {
   user_feature_idx: number;
-  snippet_feature_idx?: number; // Only present in individual weight mode
-  importance: number;
-  precision: number;
-  variance?: number; // Present in new aggregated mode
-  mean_weight?: number; // Present in new aggregated mode
-  sign: "positive" | "negative" | "mixed";
-  interaction_count?: number; // Only present in old aggregation mode
+  impact: number;      // sum_i E[|W_ij|]
+  certainty: number;   // mean_i P(|W_ij| > eps)
+  uncertainty: number; // sum_i Var(W_ij) * E[|W_ij|]
+  mean_weight: number; // mean of W_ij across components (sign indicator)
+  mean_precision?: number;
 }
 
-export interface UserSkillsResponse {
-  skills: UserSkill[];
-}
+// Legacy UserSkillsResponse removed; use UserSkillsAllResponse
+
+export interface UserSkillsAllResponse {
+  impact: UserSkill[];
+  certain: UserSkill[];
+  uncertain: UserSkill[];
+};
 
 export interface LearningActivityPoint {
   t: string;
@@ -269,6 +271,6 @@ export interface LearningActivityPoint {
 }
 
 export interface LearningActivityResponse {
-  timeframe: string;
+  scale: string;
   points: LearningActivityPoint[];
 }

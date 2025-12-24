@@ -1,12 +1,12 @@
-from pathlib import Path
+from app.config import settings
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-# Use the offline dataset so we don't have to copy files around
-DATA_DIR = BASE_DIR / "data" / "offline"
+# S3 object keys within the offline data bucket
+WORDLIST_KEY = "english_10k.json"
+ENRICHED_WORDLIST_KEY = "english_10k_enriched.json"
+BIGRAM_KEY = "bigram_freqs.json"
+TRIGRAM_KEY = "trigram_freqs.json"
+WORD_FEATURES_KEY = "word_features.json"
+SNIPPETS_KEY = "snippets.json"
 
-WORDLIST_PATH = DATA_DIR / "english_10k.json"
-ENRICHED_WORDLIST_PATH = DATA_DIR / "english_10k_enriched.json"
-BIGRAM_PATH = DATA_DIR / "bigram_freqs.json"
-TRIGRAM_PATH = DATA_DIR / "trigram_freqs.json"
-WORD_FEATURES_PATH = DATA_DIR / "word_features.json"
-SNIPPETS_PATH = DATA_DIR / "snippets.json"
+# Offline bucket name
+OFFLINE_BUCKET = settings.data_bucket_offline

@@ -17,6 +17,12 @@ data/
 └── prod/          # Prod FAISS index + metadata + backup/
 ```
 
+These directories are mirrored in MinIO/S3 buckets:
+- `flowtype-offline` (shared artifacts consumed during bootstrap)
+- `flowtype-dev`, `flowtype-stage`, `flowtype-prod` (environment-specific FAISS assets)
+
+Use `python backend/scripts/migrate_data_to_minio.py` before promotions to ensure MinIO is in sync with local files, and start the matching `docker-compose` stack so the endpoint is reachable.
+
 ## Workflow
 
 ### 1. Dev
@@ -37,6 +43,8 @@ docker-compose -f docker-compose.stage.yml exec backend_stage python scripts/boo
 curl http://localhost:8001/health
 ```
 
+`promote_to_stage.py` promotes through MinIO/S3—ensure `docker-compose -f docker-compose.stage.yml up` (or an external MinIO endpoint) is running so the script can reach `flowtype-stage` and `flowtype-offline` buckets.
+
 **Validation on promote:**
 - FAISS loads, vector count = metadata count
 - Metadata structure valid (id, words, difficulty)
@@ -50,6 +58,8 @@ docker-compose -f docker-compose.prod.yml exec backend_prod alembic upgrade head
 docker-compose -f docker-compose.prod.yml exec backend_prod python scripts/bootstrap_env.py --env prod  # first-time only
 docker logs -f flowtype_backend_prod
 ```
+
+The prod promotion script mirrors stage: artifacts are copied between MinIO buckets (`flowtype-stage` → `flowtype-prod`) with automatic backups. Confirm the prod MinIO service is reachable before running it.
 
 **Promote when:**
 - Stage tested 24+ hours
@@ -101,6 +111,14 @@ python scripts/promote_to_prod.py
 docker-compose [-f docker-compose.{env}.yml] up [-d]
 docker-compose [-f docker-compose.{env}.yml] down
 ```
+
+## Observability
+- The frontend exposes `/observability` to review certainty bands, session volume, and reward trends after each deployment.
+- Ports: dev :5173, stage :5174, prod :5175. Verify the matching backend (`:8000|:8001|:8002`) is healthy before checking the dashboard.
+- Expect fresh data immediately after `bootstrap_env.py` or promotions once sessions flow; stale charts usually mean the MinIO artifacts or DB seed did not complete.
+
+![Observability Dashboard](../screenshots/observability.png)
+**Observability dashboard** — Single view for session health, reward stability, and certainty across environments.
 
 ## Security
 - Never commit `.env.{dev|stage|prod}`

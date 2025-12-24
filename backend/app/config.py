@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+import os
 
 
 class Settings(BaseSettings):
@@ -10,9 +11,10 @@ class Settings(BaseSettings):
         "postgresql://flowtype_dev:flowtype_dev@postgres_dev:5432/flowtype_dev"
     )
 
-    # FAISS
-    faiss_index_path: str = "data/dev/faiss_index.bin"
-    snippet_metadata_path: str = "data/dev/snippet_metadata.json"
+    # FAISS (S3-backed)
+    # Object keys within the chosen data bucket for the current env
+    faiss_index_key: str = "faiss_index.bin"
+    snippet_metadata_key: str = "snippet_metadata.json"
 
     # ML
     embedding_dim: int = 16
@@ -25,13 +27,27 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30  # Default to 30 minutes
 
     # Object storage (MinIO/S3 compatible)
-    minio_endpoint: str = "http://minio_dev:9000"
+    minio_endpoint: str = "http://minio-dev:9000"
+    minio_dev_endpoint: str = "http://localhost:9000"
+    minio_stage_endpoint: str = "http://localhost:9002"
+    minio_prod_endpoint: str = "http://localhost:9004"
     minio_access_key: str = "minioadmin"
     minio_secret_key: str = "minioadmin"
-    minio_bucket: str = "ml-artifacts-dev"
     minio_region: str = "us-east-1"
 
-    model_config = SettingsConfigDict(env_file=".env")
+    # Data buckets by environment (offline, dev, stage, prod)
+    data_bucket_offline: str = "flowtype-offline"
+    data_bucket_dev: str = "flowtype-dev"
+    data_bucket_stage: str = "flowtype-stage"
+    data_bucket_prod: str = "flowtype-prod"
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    def model_post_init(self, __context):
+        legacy_bucket = os.getenv("MINIO_BUCKET")
+        if legacy_bucket:
+            self.data_bucket_dev = legacy_bucket
+
 
 
 settings = Settings()

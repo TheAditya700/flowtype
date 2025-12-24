@@ -25,20 +25,18 @@ const ObservabilityHeader: React.FC<Props> = ({ data, loading }) => {
       bgColor: "bg-emerald-500/10",
     },
     {
+      label: "Sessions (24h)",
+      value: (data?.sessions_last_24h ?? 0).toLocaleString(),
+      icon: Clock,
+      color: "text-yellow-400",
+      bgColor: "bg-yellow-500/10",
+    },
+    {
       label: "Model Version",
       value: data?.model_version ?? "v0.0.0",
       icon: GitBranch,
       color: "text-purple-400",
       bgColor: "bg-purple-500/10",
-    },
-    {
-      label: "Last Snapshot",
-      value: data?.last_snapshot_time
-        ? formatDistanceToNow(new Date(data.last_snapshot_time), { addSuffix: true })
-        : "N/A",
-      icon: Clock,
-      color: "text-yellow-400",
-      bgColor: "bg-yellow-500/10",
     },
   ];
 

@@ -17,6 +17,10 @@ import {
   useSessionMode,
 } from "./context/SessionModeContext";
 import Header from "./components/Header";
+import { installRechartsConsoleFilter } from "./utils/suppressRechartsWarnings";
+
+// Install console filter for Recharts warnings in dev
+installRechartsConsoleFilter();
 
 function Root() {
   const location = useLocation();

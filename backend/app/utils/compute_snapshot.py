@@ -95,74 +95,82 @@ def compute_top_interactions(agent, k=10):
         [unpack(i) for i in top_neg_idx],
     )
 
-def compute_top_certain_uncertain(agent, k=10):
+def expected_abs_gaussian(mu: np.ndarray, sigma: np.ndarray) -> np.ndarray:
     """
-    Compute top K features by:
-    - importance: actual contribution to predictions (weighted by typical magnitudes)
-    - certain: most confident features (high precision, high contribution)
-    - uncertain: least confident features (low precision, high variance)
-    
-    Excludes Previous Snippet PCA components (114-129).
-    
-    Returns:
-        (top_certain, top_uncertain, top_importance): Three lists of feature information
+    E[|X|] for X ~ N(mu, sigma^2), elementwise.
     """
-    W_mean = agent.W_mean  # Shape: (16 snippet features, 130 user features)
+    sigma = np.clip(sigma, 1e-8, None)
+    term1 = sigma * np.sqrt(2.0 / np.pi) * np.exp(-(mu ** 2) / (2.0 * sigma ** 2))
+    term2 = np.abs(mu) * (1.0 - 2.0 * norm.cdf(-np.abs(mu) / sigma))
+    return term1 + term2
+
+
+def prob_abs_gt_eps(mu: np.ndarray, sigma: np.ndarray, eps: float) -> np.ndarray:
+    """
+    P(|X| > eps) for X ~ N(mu, sigma^2), elementwise.
+    """
+    sigma = np.clip(sigma, 1e-8, None)
+    p_pos = 1.0 - norm.cdf(eps, loc=mu, scale=sigma)
+    p_neg = norm.cdf(-eps, loc=mu, scale=sigma)
+    return p_pos + p_neg
+
+
+def compute_top_user_components(
+    agent,
+    k: int = 5,
+    eps: float = 1e-3,
+    exclude_prev_snippet: bool = True,
+):
+    """
+    Rank user features by:
+      impact_j      = sum_i E[|W_ij|]
+            certainty_j   = mean_i P(|W_ij| > eps)
+            uncertainty_j = 1 - certainty_j  (remove impact component)
+    """
+    W_mean = agent.W_mean              # (16, 130)
     W_prec = agent.W_precision
     W_var = 1.0 / W_prec
-    
-    # Calculate actual contribution: sum of |weight| across all snippet dimensions
-    # This tells us how much each user feature actually impacts predictions
-    user_contribution = np.sum(np.abs(W_mean), axis=0)  # Shape: (130,)
-    
-    # Filter out Prev Snippet PCA components (114-129)
-    valid_mask = np.ones(130, dtype=bool)
-    valid_mask[114:130] = False
-    
-    # Get indices sorted by contribution (for importance mode)
-    valid_contribution = np.where(valid_mask, user_contribution, -np.inf)
-    top_importance_indices = np.argsort(valid_contribution)[-k:][::-1]
-    
-    # For certain: high precision AND high contribution (weighted score)
-    # Normalize precision to 0-1 scale (using log to handle wide range)
-    norm_precision = np.log10(np.clip(W_prec, 1.0, 1e6))  # 0 to 6 range
-    norm_precision = norm_precision / 6.0  # 0 to 1
-    
-    # Average certainty across snippet dimensions
-    avg_precision = np.mean(norm_precision, axis=0)  # Shape: (130,)
-    
-    # Certainty score: precision * contribution (features that are certain AND matter)
-    certainty_score = avg_precision * user_contribution
-    valid_certainty = np.where(valid_mask, certainty_score, -np.inf)
-    top_certain_indices = np.argsort(valid_certainty)[-k:][::-1]
-    
-    # For uncertain: low precision (high variance) but still has some contribution
-    # We want features the model is learning about, not just noise
-    avg_variance = np.mean(W_var, axis=0)  # Shape: (130,)
-    
-    # Uncertainty score: variance * contribution (uncertain features that matter)
-    uncertainty_score = avg_variance * user_contribution
-    valid_uncertainty = np.where(valid_mask, uncertainty_score, -np.inf)
-    top_uncertain_indices = np.argsort(valid_uncertainty)[-k:][::-1]
-    
-    def create_feature_info(user_idx):
-        """Create aggregated feature info for a user feature across all snippet dimensions."""
+    W_std = np.sqrt(W_var)
+
+    E_abs = expected_abs_gaussian(W_mean, W_std)          # (16, 130)
+    P_nonzero = prob_abs_gt_eps(W_mean, W_std, eps)       # (16, 130)
+
+    impact = E_abs.sum(axis=0)                            # (130,)
+    certainty = P_nonzero.mean(axis=0)                    # (130,)
+    uncertainty = 1.0 - certainty                         # (130,)
+
+    valid_mask = np.ones(W_mean.shape[1], dtype=bool)
+    if exclude_prev_snippet:
+        valid_mask[114:130] = False
+
+    def topk(score_vec, k_):
+        masked = np.where(valid_mask, score_vec, -np.inf)
+        return np.argsort(masked)[-k_:][::-1]
+
+    top_impact_idx = topk(impact, k)
+    top_certain_idx = topk(certainty, k)
+    top_uncertain_idx = topk(uncertainty, k)
+
+    def feature_info(j):
         return {
-            "user_feature_idx": int(user_idx),
-            "importance": float(user_contribution[user_idx]),
-            "precision": float(np.mean(W_prec[:, user_idx])),
-            "variance": float(np.mean(W_var[:, user_idx])),
-            "mean_weight": float(np.mean(W_mean[:, user_idx])),
-            "sign": "positive" if np.sum(W_mean[:, user_idx]) > 0 else "negative",
+            "user_feature_idx": int(j),
+            "impact": float(impact[j]),
+            "certainty": float(certainty[j]),
+            "uncertainty": float(uncertainty[j]),
+            "mean_weight": float(np.mean(W_mean[:, j])),
+            "mean_precision": float(np.mean(W_prec[:, j])),
         }
-    
-    top_importance = [create_feature_info(idx) for idx in top_importance_indices]
-    top_certain = [create_feature_info(idx) for idx in top_certain_indices]
-    top_uncertain = [create_feature_info(idx) for idx in top_uncertain_indices]
-    
-    return (top_certain, top_uncertain, top_importance)
-    
-    return (
-        [unpack_weight(i) for i in top_certain_idx],
-        [unpack_weight(i) for i in top_uncertain_idx],
-    )
+
+    return {
+        "top_impact": [feature_info(j) for j in top_impact_idx],
+        "top_certain": [feature_info(j) for j in top_certain_idx],
+        "top_uncertain": [feature_info(j) for j in top_uncertain_idx],
+    }
+
+
+def compute_top_certain_uncertain(agent, k=10):
+    """
+    Backward-compatible wrapper returning (top_certain, top_uncertain, top_impact).
+    """
+    res = compute_top_user_components(agent, k=k, eps=1e-3, exclude_prev_snippet=True)
+    return (res["top_certain"], res["top_uncertain"], res["top_impact"])

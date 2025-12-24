@@ -10,17 +10,16 @@ import {
   Legend,
 } from "recharts";
 import { LearningHealthPoint } from "../../types";
-import { format } from "date-fns";
-import { Timeframe, getXAxisDomain, formatXAxisTick, generateFixedTicks } from "../../utils/chartUtils";
-import { Eye, TrendingUp, Activity } from "lucide-react";
+import { Scale, buildSessionAxis, formatSessionTick, formatSessionLabel } from "../../utils/chartUtils";
+import { Eye, Activity } from "lucide-react";
 
 interface Props {
   data: LearningHealthPoint[];
   loading: boolean;
-  timeframe: Timeframe;
+  scale: Scale;
 }
 
-const LearningHealthChart: React.FC<Props> = ({ data, loading, timeframe }) => {
+const LearningHealthChart: React.FC<Props> = ({ data, loading, scale }) => {
   const [mode, setMode] = useState<"precision" | "variance">("precision");
 
   if (loading) {
@@ -31,24 +30,12 @@ const LearningHealthChart: React.FC<Props> = ({ data, loading, timeframe }) => {
     );
   }
 
-  // Pre-process data to ensure timestamps are numbers for Recharts domain
-  const chartData = data.map(d => ({
+  const chartData = data.map((d, idx) => ({
     ...d,
-    timestamp: new Date(d.t).getTime()
+    session: idx + 1,
   }));
 
-  const lastTimestamp = chartData.length > 0 ? Math.max(...chartData.map(d => d.timestamp)) : undefined;
-  const domain = getXAxisDomain(timeframe, lastTimestamp);
-  const ticks = generateFixedTicks(timeframe, lastTimestamp);
-  
-  // Filter to include points within domain plus one point before for left border extension
-  const [domainStart, domainEnd] = domain;
-  const filteredData = chartData.filter((d, idx, arr) => {
-    if (d.timestamp >= domainStart && d.timestamp <= domainEnd) return true;
-    // Include one point before the domain start
-    if (d.timestamp < domainStart && (idx === arr.length - 1 || arr[idx + 1].timestamp >= domainStart)) return true;
-    return false;
-  });
+  const { domain, ticks } = buildSessionAxis(chartData.length);
 
   if (data.length === 0) {
     return (
@@ -68,13 +55,12 @@ const LearningHealthChart: React.FC<Props> = ({ data, loading, timeframe }) => {
           </p>
         </div>
         
-        <div className="flex items-center gap-1 bg-gray-800 p-1 rounded-lg border border-gray-700">
+        <div className="flex items-center gap-1 bg-gray-800 p-1 rounded-lg border border-gray-800">
           <button
             onClick={() => setMode("precision")}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-mono transition-all ${
               mode === "precision"
-                ? "bg-emerald-600 text-white shadow-lg shadow-emerald-900/20"
-                : "text-gray-400 hover:text-gray-200"
+                ?"bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"
             }`}
           >
             <Eye size={14} /> Precision
@@ -83,8 +69,7 @@ const LearningHealthChart: React.FC<Props> = ({ data, loading, timeframe }) => {
             onClick={() => setMode("variance")}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-mono transition-all ${
               mode === "variance"
-                ? "bg-amber-600 text-white shadow-lg shadow-amber-900/20"
-                : "text-gray-400 hover:text-gray-200"
+                ?"bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"
             }`}
           >
             <Activity size={14} /> Variance
@@ -94,17 +79,16 @@ const LearningHealthChart: React.FC<Props> = ({ data, loading, timeframe }) => {
 
       <div className="flex-grow min-h-[250px]">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={filteredData}>
+          <LineChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
             <XAxis
-              dataKey="timestamp"
+              dataKey="session"
               type="number"
               domain={domain}
               ticks={ticks}
-              tickFormatter={(t) => formatXAxisTick(t, timeframe)}
+              tickFormatter={(t) => formatSessionTick(t as number, scale)}
               stroke="#4B5563"
               tick={{ fill: "#9CA3AF", fontSize: 10, fontFamily: "monospace" }}
-              scale="time"
             />
             <YAxis
               stroke="#4B5563"
@@ -121,7 +105,7 @@ const LearningHealthChart: React.FC<Props> = ({ data, loading, timeframe }) => {
               }}
               itemStyle={{ fontFamily: "monospace", fontSize: "12px" }}
               labelStyle={{ fontFamily: "monospace", color: "#9CA3AF", fontSize: "12px" }}
-              labelFormatter={(t) => format(new Date(t), "PPpp")}
+              labelFormatter={(value) => formatSessionLabel(value as number, scale)}
             />
             <Legend wrapperStyle={{ fontFamily: "monospace", fontSize: "12px" }} />
             

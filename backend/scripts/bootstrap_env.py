@@ -19,23 +19,45 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from botocore.exceptions import ClientError
+
 from app.database import Base, engine
 from app.generator import generate
 from app.generator.populate_db import populate_snippet_database
 from scripts.build_index import build_index
 from app.generator import config as gen_config
+from app.utils.s3_utils import get_s3_client
 
 
 def ensure_prereqs() -> None:
-    required = [
-        gen_config.ENRICHED_WORDLIST_PATH,
-        gen_config.WORDLIST_PATH,
-        gen_config.BIGRAM_PATH,
-        gen_config.TRIGRAM_PATH,
+    s3 = get_s3_client()
+    bucket = gen_config.OFFLINE_BUCKET
+
+    try:
+        s3.head_bucket(Bucket=bucket)
+    except ClientError as exc:
+        raise FileNotFoundError(f"Offline data bucket missing: {bucket} ({exc})") from exc
+
+    required_keys = [
+        gen_config.WORDLIST_KEY,
+        gen_config.ENRICHED_WORDLIST_KEY,
+        gen_config.BIGRAM_KEY,
+        gen_config.TRIGRAM_KEY,
     ]
-    missing = [p for p in required if not p.exists()]
+
+    missing: list[str] = []
+    for key in required_keys:
+        try:
+            s3.head_object(Bucket=bucket, Key=key)
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code")
+            if code in {"404", "NoSuchKey", "NotFound"}:
+                missing.append(f"s3://{bucket}/{key}")
+            else:
+                raise
+
     if missing:
-        msg = "Missing required data files: " + ", ".join(str(p) for p in missing)
+        msg = "Missing required data files: " + ", ".join(missing)
         raise FileNotFoundError(msg)
 
 
