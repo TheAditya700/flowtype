@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional
 from enum import Enum
 import numpy as np
@@ -81,7 +81,7 @@ def get_observability_header(
     total_sessions = db.query(TypingSession).count()
 
     # Active users (unique users with sessions in last 24h)
-    one_day_ago = datetime.utcnow() - timedelta(days=1)
+    one_day_ago = datetime.now(timezone.utc) - timedelta(days=1)
     active_users = (
         db.query(TypingSession.user_id)
         .filter(TypingSession.created_at >= one_day_ago)

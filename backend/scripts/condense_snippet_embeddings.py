@@ -26,7 +26,7 @@ def condense_embeddings():
     session = Session()
 
     logger.info("Fetching snippets...")
-    snippets = session.query(Snippet).all()
+    snippets: list[Snippet] = session.query(Snippet).all()
 
     if not snippets:
         logger.warning("No snippets found in database.")

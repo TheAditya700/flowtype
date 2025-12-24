@@ -1,5 +1,5 @@
 import io
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 import boto3
@@ -96,7 +96,7 @@ def save_agent_snapshot_to_s3(
         W_precision=params["W_precision"].astype(np.float32),
         model_version=agent.version,
         session_count=session_count,
-        timestamp=datetime.utcnow().isoformat(),
+        timestamp=datetime.now(timezone.utc).isoformat(),
     )
     buffer.seek(0)
 

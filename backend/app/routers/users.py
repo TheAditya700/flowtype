@@ -51,6 +51,18 @@ def _calculate_stats(
         .first()
     )
 
+    # Handle potentially None basic_stats
+    total_sessions = 0
+    avg_wpm = 0.0
+    avg_accuracy = 0.0
+    total_time = 0.0
+
+    if basic_stats:
+        total_sessions = basic_stats.total_sessions or 0
+        avg_wpm = basic_stats.avg_wpm or 0.0
+        avg_accuracy = basic_stats.avg_accuracy or 0.0
+        total_time = basic_stats.total_time or 0.0
+
     # 3. Best WPMs (Use Cache if available)
     best_wpms_cache = user_obj.best_wpms if user_obj and user_obj.best_wpms else {}
 
@@ -74,13 +86,13 @@ def _calculate_stats(
         )
         return val or 0.0
 
-    avg_accuracy_pct = (basic_stats.avg_accuracy or 0.0) * 100.0
+    avg_accuracy_pct = avg_accuracy * 100.0
 
     return UserStats(
-        total_sessions=basic_stats.total_sessions if basic_stats else 0,
-        avg_wpm=basic_stats.avg_wpm or 0.0,
+        total_sessions=total_sessions,
+        avg_wpm=avg_wpm,
         avg_accuracy=avg_accuracy_pct,
-        total_time_typing=basic_stats.total_time or 0.0,
+        total_time_typing=total_time,
         best_wpm_15=get_best_wpm(15),
         best_wpm_30=get_best_wpm(30),
         best_wpm_60=get_best_wpm(60),
@@ -160,10 +172,10 @@ def get_user_stats_detail(user_id: str, db: Session = Depends(get_db)):
     current_streak = 0
     longest_streak = 0
     if days_sorted:
-        from datetime import datetime, timedelta
+        from datetime import datetime, timedelta, timezone
 
         day_set = set(days_sorted)
-        today = datetime.utcnow().date()
+        today = datetime.now(timezone.utc).date()
 
         # Current streak: count backwards from today
         cursor = today
