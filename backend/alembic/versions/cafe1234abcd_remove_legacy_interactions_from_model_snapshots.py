@@ -29,5 +29,9 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Recreate legacy interaction columns on model_snapshots (nullable)."""
     with op.batch_alter_table("model_snapshots") as batch_op:
-        batch_op.add_column(sa.Column("top_positive_interactions", sa.JSON(), nullable=True))
-        batch_op.add_column(sa.Column("top_negative_interactions", sa.JSON(), nullable=True))
+        batch_op.add_column(
+            sa.Column("top_positive_interactions", sa.JSON(), nullable=True)
+        )
+        batch_op.add_column(
+            sa.Column("top_negative_interactions", sa.JSON(), nullable=True)
+        )

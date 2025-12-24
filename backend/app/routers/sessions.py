@@ -12,7 +12,10 @@ from app.models.db_models import TypingSession, User, Snippet
 from app.ml.user_features import UserFeatureExtractor
 from app.ml.feature_aggregator import update_long_term_features
 from app.ml.lints_agent import agent
-from app.utils.compute_snapshot import compute_model_snapshot, compute_top_certain_uncertain
+from app.utils.compute_snapshot import (
+    compute_model_snapshot,
+    compute_top_certain_uncertain,
+)
 from app.utils.s3_utils import save_agent_snapshot_to_s3
 from sqlalchemy.sql import func
 import logging, uuid, json
@@ -24,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 POSTGRES_LOGGING_FREQ = 1
 DEEP_STORE_FREQ = 2
+
 
 def get_db():
     db = SessionLocal()
@@ -255,10 +259,14 @@ def create_session(
                 logger.info(f"Using DB embedding for snippet {s_res.snippet_id}")
             else:
                 embedding_vec = vector_store.get_embedding_by_id(s_res.snippet_id)
-                logger.info(f"Using FAISS fallback for snippet {s_res.snippet_id}, got: {embedding_vec is not None}")
+                logger.info(
+                    f"Using FAISS fallback for snippet {s_res.snippet_id}, got: {embedding_vec is not None}"
+                )
 
             if embedding_vec is not None:
-                logger.info(f"Updating agent for snippet {s_res.snippet_id}, reward will be calculated")
+                logger.info(
+                    f"Updating agent for snippet {s_res.snippet_id}, reward will be calculated"
+                )
                 metrics_now = {
                     "accuracy": s_res.accuracy,
                     "wpm": s_res.wpm,
@@ -288,9 +296,7 @@ def create_session(
                     prev_snippet_embedding=None,
                 )
 
-                agent.update(
-                    user_context, np.array(embedding_vec, dtype=np.float32), r
-                )
+                agent.update(user_context, np.array(embedding_vec, dtype=np.float32), r)
 
         agent.save()
 
@@ -308,13 +314,15 @@ def create_session(
 
             # Get previous snapshot for delta calculation
             prev_snapshot = agent.get_prev_snapshot()
-            
+
             snapshot_stats = compute_model_snapshot(agent, prev_snapshot=prev_snapshot)
 
             # Store current state as "previous" for next time
             agent.snapshot_for_delta()
 
-            top_certain, top_uncertain, top_importance = compute_top_certain_uncertain(agent)
+            top_certain, top_uncertain, top_importance = compute_top_certain_uncertain(
+                agent
+            )
 
             weights_uri = None
 
@@ -344,33 +352,28 @@ def create_session(
 
             model_snapshot = ModelSnapshots(
                 model_version=str(agent.version),
-
                 mean_precision=snapshot_stats["mean_precision"],
                 median_precision=snapshot_stats["median_precision"],
                 p90_precision=snapshot_stats["p90_precision"],
                 p99_precision=snapshot_stats["p99_precision"],
                 mean_variance=snapshot_stats["mean_variance"],
                 fraction_high_confidence=snapshot_stats["fraction_high_confidence"],
-
                 mean_abs_weight=snapshot_stats["mean_abs_weight"],
                 p90_abs_weight=snapshot_stats["p90_abs_weight"],
                 fraction_near_zero_mean=snapshot_stats["fraction_near_zero_mean"],
-                fraction_confident_irrelevant=snapshot_stats["fraction_confident_irrelevant"],
-
+                fraction_confident_irrelevant=snapshot_stats[
+                    "fraction_confident_irrelevant"
+                ],
                 mean_abs_delta_mean=snapshot_stats["mean_abs_delta_mean"],
                 mean_delta_precision=snapshot_stats["mean_delta_precision"],
                 fraction_weights_updated=snapshot_stats["fraction_weights_updated"],
-
                 top_certain_weights=top_certain,
                 top_uncertain_weights=top_uncertain,
                 top_importance_weights=top_importance,
-
                 weights_uri=weights_uri,
             )
 
             db.add(model_snapshot)
-
-
 
         # -----------------------------------------------------
         # 3. Calculate Smoothness Score (needed for DB save)
@@ -396,7 +399,9 @@ def create_session(
             else:
                 # Fallback: reconstruct embedding from FAISS index
                 emb_vec = vector_store.get_embedding_by_id(sid)
-                snippet_embeddings.append(emb_vec.tolist() if emb_vec is not None else None)
+                snippet_embeddings.append(
+                    emb_vec.tolist() if emb_vec is not None else None
+                )
 
         # Get user embedding (130-dim state vector)
         user_embedding_vec = None

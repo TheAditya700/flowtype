@@ -36,7 +36,9 @@ def ensure_prereqs() -> None:
     try:
         s3.head_bucket(Bucket=bucket)
     except ClientError as exc:
-        raise FileNotFoundError(f"Offline data bucket missing: {bucket} ({exc})") from exc
+        raise FileNotFoundError(
+            f"Offline data bucket missing: {bucket} ({exc})"
+        ) from exc
 
     required_keys = [
         gen_config.WORDLIST_KEY,

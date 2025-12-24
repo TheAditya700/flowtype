@@ -18,7 +18,11 @@ from app.utils.s3_data import (
     read_json,
     upload_bytes,
 )
-from app.utils.s3_utils import _ensure_bucket_exists, get_endpoint_for_env, get_s3_client_for_env
+from app.utils.s3_utils import (
+    _ensure_bucket_exists,
+    get_endpoint_for_env,
+    get_s3_client_for_env,
+)
 
 
 DEV_BUCKET = get_env_data_bucket("dev")
@@ -132,7 +136,9 @@ def backup_stage(stage_client) -> None:
             content_type=content_type,
             s3=stage_client,
         )
-        print(f"✅ Backed up s3://{STAGE_BUCKET}/{key} → s3://{STAGE_BUCKET}/{backup_key}")
+        print(
+            f"✅ Backed up s3://{STAGE_BUCKET}/{key} → s3://{STAGE_BUCKET}/{backup_key}"
+        )
         backed_up = True
 
     if not backed_up:

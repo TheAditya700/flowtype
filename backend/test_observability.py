@@ -3,6 +3,7 @@ import json
 
 base_url = "http://localhost:8000"
 
+
 def call_endpoint(path):
     try:
         url = f"{base_url}{path}"
@@ -12,7 +13,10 @@ def call_endpoint(path):
             print("Success!")
             try:
                 data = response.json()
-                print(json.dumps(data, indent=2)[:500] + ("..." if len(str(data)) > 500 else "")) # Truncate for display
+                print(
+                    json.dumps(data, indent=2)[:500]
+                    + ("..." if len(str(data)) > 500 else "")
+                )  # Truncate for display
             except Exception as e:
                 print(f"Error parsing JSON: {e}")
         else:
@@ -20,6 +24,7 @@ def call_endpoint(path):
             print(response.text)
     except Exception as e:
         print(f"Connection failed: {e}")
+
 
 if __name__ == "__main__":
     call_endpoint("/api/observability/header")

@@ -24,7 +24,9 @@ def upgrade() -> None:
     op.create_table(
         "model_snapshots",
         sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("created_at", sa.DateTime(), nullable=True, server_default=sa.func.now()),
+        sa.Column(
+            "created_at", sa.DateTime(), nullable=True, server_default=sa.func.now()
+        ),
         sa.Column("model_version", sa.String(), nullable=False),
         # Belief confidence
         sa.Column("mean_precision", sa.Float(), nullable=False),

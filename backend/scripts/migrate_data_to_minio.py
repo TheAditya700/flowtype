@@ -17,7 +17,11 @@ from botocore.exceptions import EndpointConnectionError
 
 from app.config import settings
 from app.utils.s3_data import upload_bytes
-from app.utils.s3_utils import _ensure_bucket_exists, get_endpoint_for_env, get_s3_client_for_env
+from app.utils.s3_utils import (
+    _ensure_bucket_exists,
+    get_endpoint_for_env,
+    get_s3_client_for_env,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"

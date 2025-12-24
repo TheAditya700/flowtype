@@ -44,7 +44,9 @@ def _effective_limit(scale: ScaleEnum, limit: Optional[int]) -> int:
     return limit if limit is not None else POINTS_PER_VIEW * _group_size(scale)
 
 
-def _aggregate_mean(points: List[Dict[str, Any]], group_size: int, fields: List[str]) -> List[Dict[str, Any]]:
+def _aggregate_mean(
+    points: List[Dict[str, Any]], group_size: int, fields: List[str]
+) -> List[Dict[str, Any]]:
     """Chunk sequential points and average numeric fields per chunk."""
     if not points:
         return []
@@ -77,7 +79,7 @@ def get_observability_header(
     """
     # Total sessions
     total_sessions = db.query(TypingSession).count()
-    
+
     # Active users (unique users with sessions in last 24h)
     one_day_ago = datetime.utcnow() - timedelta(days=1)
     active_users = (
@@ -88,20 +90,16 @@ def get_observability_header(
         .count()
     )
     sessions_last_24h = (
-        db.query(TypingSession)
-        .filter(TypingSession.created_at >= one_day_ago)
-        .count()
+        db.query(TypingSession).filter(TypingSession.created_at >= one_day_ago).count()
     )
-    
+
     # Latest snapshot info (keep model version; drop last_snapshot_time)
     latest_snapshot = (
-        db.query(ModelSnapshots)
-        .order_by(ModelSnapshots.created_at.desc())
-        .first()
+        db.query(ModelSnapshots).order_by(ModelSnapshots.created_at.desc()).first()
     )
-    
+
     model_version = latest_snapshot.model_version if latest_snapshot else "v0.0.0"
-    
+
     return {
         "total_sessions": total_sessions,
         "active_users": active_users,
@@ -139,13 +137,17 @@ def get_learning_health(
     raw_points = []
     for snap in snapshots:
         if snap.created_at:
-            raw_points.append({
-                "t": snap.created_at.isoformat(),
-                "mean_precision": float(snap.mean_precision or 0.0),
-                "mean_variance": float(snap.mean_variance or 0.0),
-            })
+            raw_points.append(
+                {
+                    "t": snap.created_at.isoformat(),
+                    "mean_precision": float(snap.mean_precision or 0.0),
+                    "mean_variance": float(snap.mean_variance or 0.0),
+                }
+            )
 
-    grouped = _aggregate_mean(raw_points, _group_size(scale), ["mean_precision", "mean_variance"])
+    grouped = _aggregate_mean(
+        raw_points, _group_size(scale), ["mean_precision", "mean_variance"]
+    )
     points = grouped[-POINTS_PER_VIEW:]
 
     return {"scale": scale.value, "points": points}
@@ -187,13 +189,15 @@ def get_agent_effectiveness(
         if not np.isfinite(reward):
             continue
 
-        raw_points.append({
-            "t": s.created_at.isoformat(),
-            "mean_reward": reward,
-            "reward_variance": 0.0,  # computed per chunk
-            "reward_std": 0.0,       # computed per chunk
-            "count": 1,
-        })
+        raw_points.append(
+            {
+                "t": s.created_at.isoformat(),
+                "mean_reward": reward,
+                "reward_variance": 0.0,  # computed per chunk
+                "reward_std": 0.0,  # computed per chunk
+                "count": 1,
+            }
+        )
 
     group_size = _group_size(scale)
     aggregated: List[Dict[str, Any]] = []
@@ -212,7 +216,9 @@ def get_agent_effectiveness(
         else:
             end = min(idx + group_size, len(raw_points))
             w_start = max(0, end - 10)
-            window_rewards = [float(item["mean_reward"]) for item in raw_points[w_start:end]]
+            window_rewards = [
+                float(item["mean_reward"]) for item in raw_points[w_start:end]
+            ]
             if len(window_rewards) >= 2:
                 win_std = float(np.std(window_rewards))
                 win_var = float(np.var(window_rewards))
@@ -220,13 +226,15 @@ def get_agent_effectiveness(
                 win_std = 0.0
                 win_var = 0.0
 
-        aggregated.append({
-            "t": chunk[-1]["t"],
-            "mean_reward": float(np.mean(rewards)) if rewards else 0.0,
-            "reward_variance": win_var,
-            "reward_std": win_std,
-            "count": sum(int(item.get("count", 1)) for item in chunk),
-        })
+        aggregated.append(
+            {
+                "t": chunk[-1]["t"],
+                "mean_reward": float(np.mean(rewards)) if rewards else 0.0,
+                "reward_variance": win_var,
+                "reward_std": win_std,
+                "count": sum(int(item.get("count", 1)) for item in chunk),
+            }
+        )
 
     points = aggregated[-POINTS_PER_VIEW:]
 
@@ -256,8 +264,8 @@ def get_performance_deltas(
         .limit(effective_limit)
         .all()
     )
-    
-    sessions.reverse() # Chronological
+
+    sessions.reverse()  # Chronological
 
     # Fetch user EMA baselines (cached lookup)
     user_emas: Dict[str, Optional[List[float]]] = {}
@@ -266,7 +274,7 @@ def get_performance_deltas(
     for s in sessions:
         if not s.created_at or not s.user_id:
             continue
-        
+
         # Get user EMA baseline
         if s.user_id not in user_emas:
             user = db.query(User).filter(User.id == s.user_id).first()
@@ -275,42 +283,46 @@ def get_performance_deltas(
                 user_emas[s.user_id] = ema_data.get("ema_mean", [])
             else:
                 user_emas[s.user_id] = None
-        
+
         ema_mean = user_emas[s.user_id]
         if not ema_mean or len(ema_mean) < 57:
             continue
-        
+
         # Compute deltas
         actual_acc = float(s.actual_accuracy or 0.0)
         actual_wpm = float(s.actual_wpm or 0.0)
         actual_consistency = float(s.actual_consistency or 0.0) / 100.0  # normalize
-        
+
         base_acc = float(ema_mean[0])  # IDX_ACCURACY
         base_wpm_raw = float(ema_mean[21])  # IDX_WPM_RAW
         base_eff_wpm = float(ema_mean[22])  # IDX_WPM_EFFECTIVE
-        
+
         # Smoothness baseline: 0.5 * (1/(1+IKI_CV)) + 0.5 * (1-spike_rate)
         # We'll use IKI_CV at index 11 and spike_rate at index 28
         base_iki_cv = float(ema_mean[11]) if len(ema_mean) > 11 else 0.25
         base_spike_rate = float(ema_mean[28]) if len(ema_mean) > 28 else 0.20
-        base_smoothness = 0.5 * (1.0 / (1.0 + base_iki_cv)) + 0.5 * (1.0 - base_spike_rate)
-        
+        base_smoothness = 0.5 * (1.0 / (1.0 + base_iki_cv)) + 0.5 * (
+            1.0 - base_spike_rate
+        )
+
         # Current effective WPM
         actual_eff_wpm = actual_wpm * actual_acc
-        
+
         delta_acc = actual_acc - base_acc
         delta_smoothness = actual_consistency - base_smoothness
         delta_eff_wpm = actual_eff_wpm - base_eff_wpm
-        
-        raw_points.append({
-            "t": s.created_at.isoformat(),
-            "delta_accuracy": float(delta_acc),
-            "delta_smoothness": float(delta_smoothness),
-            "delta_effective_wpm": float(delta_eff_wpm),
-            "actual_accuracy": float(actual_acc),
-            "actual_consistency": float(actual_consistency),
-            "actual_effective_wpm": float(actual_eff_wpm),
-        })
+
+        raw_points.append(
+            {
+                "t": s.created_at.isoformat(),
+                "delta_accuracy": float(delta_acc),
+                "delta_smoothness": float(delta_smoothness),
+                "delta_effective_wpm": float(delta_eff_wpm),
+                "actual_accuracy": float(actual_acc),
+                "actual_consistency": float(actual_consistency),
+                "actual_effective_wpm": float(actual_eff_wpm),
+            }
+        )
 
     grouped = _aggregate_mean(
         raw_points,
@@ -329,8 +341,6 @@ def get_performance_deltas(
     return {"scale": scale.value, "points": points}
 
 
-
-
 # New: return all three lists in one response
 @router.get("/observability/user_skills_all")
 def get_user_skills_all(
@@ -338,9 +348,7 @@ def get_user_skills_all(
     top_k: int = Query(10, ge=1, le=50),
 ):
     latest_snapshot = (
-        db.query(ModelSnapshots)
-        .order_by(ModelSnapshots.created_at.desc())
-        .first()
+        db.query(ModelSnapshots).order_by(ModelSnapshots.created_at.desc()).first()
     )
 
     if not latest_snapshot:
@@ -379,7 +387,7 @@ def get_learning_activity(
         .limit(effective_limit)
         .all()
     )
-    
+
     snapshots.reverse()
 
     raw_points = []
@@ -390,13 +398,19 @@ def get_learning_activity(
         if snap.mean_abs_delta_mean == 0.0 and snap.fraction_weights_updated == 0.0:
             continue
 
-        raw_points.append({
-            "t": snap.created_at.isoformat(),
-            "mean_abs_delta_mean": float(snap.mean_abs_delta_mean or 0.0),
-            "fraction_weights_updated": float(snap.fraction_weights_updated or 0.0),
-        })
+        raw_points.append(
+            {
+                "t": snap.created_at.isoformat(),
+                "mean_abs_delta_mean": float(snap.mean_abs_delta_mean or 0.0),
+                "fraction_weights_updated": float(snap.fraction_weights_updated or 0.0),
+            }
+        )
 
-    grouped = _aggregate_mean(raw_points, _group_size(scale), ["mean_abs_delta_mean", "fraction_weights_updated"])
+    grouped = _aggregate_mean(
+        raw_points,
+        _group_size(scale),
+        ["mean_abs_delta_mean", "fraction_weights_updated"],
+    )
     points = grouped[-POINTS_PER_VIEW:]
 
     return {"scale": scale.value, "points": points}

@@ -88,7 +88,9 @@ def build_weighted_ngrams():
     write_json(BUCKET, TRIGRAM_KEY, trigram_scores, env="offline")
 
     print(f"Saved {len(bigram_scores)} log-scaled bigrams → s3://{BUCKET}/{BIGRAM_KEY}")
-    print(f"Saved {len(trigram_scores)} log-scaled trigrams → s3://{BUCKET}/{TRIGRAM_KEY}")
+    print(
+        f"Saved {len(trigram_scores)} log-scaled trigrams → s3://{BUCKET}/{TRIGRAM_KEY}"
+    )
 
 
 if __name__ == "__main__":

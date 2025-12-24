@@ -22,6 +22,7 @@ MINIO_REGION = settings.minio_region
 # Client factory
 # -------------------------------------------------------------------
 
+
 def get_s3_client(
     *,
     endpoint_url: Optional[str] = None,
@@ -65,6 +66,7 @@ def get_s3_client_for_env(env: str):
 # Snapshot persistence
 # -------------------------------------------------------------------
 
+
 def save_agent_snapshot_to_s3(
     agent,
     session_count: int,
@@ -99,11 +101,7 @@ def save_agent_snapshot_to_s3(
     buffer.seek(0)
 
     # Deterministic object key
-    key = (
-        f"lints-agent/"
-        f"version={agent.version}/"
-        f"session_{session_count:08d}.npz"
-    )
+    key = f"lints-agent/" f"version={agent.version}/" f"session_{session_count:08d}.npz"
 
     # Ensure bucket exists (idempotent)
     _ensure_bucket_exists(s3, bucket)
@@ -122,6 +120,7 @@ def save_agent_snapshot_to_s3(
 # -------------------------------------------------------------------
 # Helpers
 # -------------------------------------------------------------------
+
 
 def _ensure_bucket_exists(s3, bucket: str):
     """

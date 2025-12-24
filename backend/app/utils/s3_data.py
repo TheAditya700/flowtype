@@ -38,7 +38,9 @@ def read_json(bucket: str, key: str, *, env: Optional[str] = None, s3=None) -> A
     return json.loads(data.decode("utf-8"))
 
 
-def write_json(bucket: str, key: str, payload: Any, *, env: Optional[str] = None, s3=None) -> str:
+def write_json(
+    bucket: str, key: str, payload: Any, *, env: Optional[str] = None, s3=None
+) -> str:
     s3 = _resolve_client(env, s3)
     _ensure_bucket_exists(s3, bucket)
     body = json.dumps(payload, indent=2).encode("utf-8")
@@ -46,7 +48,9 @@ def write_json(bucket: str, key: str, payload: Any, *, env: Optional[str] = None
     return f"s3://{bucket}/{key}"
 
 
-def download_to_temp(bucket: str, key: str, *, env: Optional[str] = None, s3=None) -> str:
+def download_to_temp(
+    bucket: str, key: str, *, env: Optional[str] = None, s3=None
+) -> str:
     s3 = _resolve_client(env, s3)
     _ensure_bucket_exists(s3, bucket)
     tmp = tempfile.NamedTemporaryFile(delete=False)

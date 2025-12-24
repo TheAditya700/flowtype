@@ -30,7 +30,11 @@ def build_index(env: str):
 
     from app.utils.s3_data import get_env_data_bucket, upload_bytes
     from app.config import settings
-    from app.utils.s3_utils import _ensure_bucket_exists, get_endpoint_for_env, get_s3_client_for_env
+    from app.utils.s3_utils import (
+        _ensure_bucket_exists,
+        get_endpoint_for_env,
+        get_s3_client_for_env,
+    )
 
     bucket = get_env_data_bucket(env)
     s3_client = get_s3_client_for_env(env)
@@ -53,7 +57,9 @@ def build_index(env: str):
         # Backfill embeddings if missing
         missing_embeddings = [s for s in snippets if not s.embedding]
         if missing_embeddings:
-            print(f"⚠️  {len(missing_embeddings)} snippets missing embeddings. Running condense_snippet_embeddings...")
+            print(
+                f"⚠️  {len(missing_embeddings)} snippets missing embeddings. Running condense_snippet_embeddings..."
+            )
             db.close()
             condense_embeddings()
             db = SessionLocal()

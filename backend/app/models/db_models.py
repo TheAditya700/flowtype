@@ -16,6 +16,7 @@ from sqlalchemy.sql import func
 from app.database import Base
 from sqlalchemy.orm import relationship
 
+
 class User(Base):
     __tablename__ = "users"
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -139,6 +140,12 @@ class ModelSnapshots(Base):
     fraction_weights_updated = Column(Float, nullable=False)
 
     # Interpretability (legacy interactions removed)
-    top_certain_weights = Column(JSON, nullable=True)  # Top 10 most certain (high precision, high contribution)
-    top_uncertain_weights = Column(JSON, nullable=True)  # Top 10 most uncertain (low precision, high contribution)
-    top_importance_weights = Column(JSON, nullable=True)  # Top 10 by actual contribution to predictions
+    top_certain_weights = Column(
+        JSON, nullable=True
+    )  # Top 10 most certain (high precision, high contribution)
+    top_uncertain_weights = Column(
+        JSON, nullable=True
+    )  # Top 10 most uncertain (low precision, high contribution)
+    top_importance_weights = Column(
+        JSON, nullable=True
+    )  # Top 10 by actual contribution to predictions

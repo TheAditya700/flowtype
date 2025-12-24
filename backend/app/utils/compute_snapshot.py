@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.stats import norm
 
+
 def compute_model_snapshot(agent, prev_snapshot=None):
     W_mean = agent.W_mean
     W_prec = agent.W_precision
@@ -22,9 +23,7 @@ def compute_model_snapshot(agent, prev_snapshot=None):
     p90_abs_weight = float(np.percentile(abs_mean, 90))
 
     fraction_near_zero_mean = float(np.mean(abs_mean < 1e-3))
-    fraction_confident_irrelevant = float(
-        np.mean((abs_mean < 1e-3) & (W_prec > 100.0))
-    )
+    fraction_confident_irrelevant = float(np.mean((abs_mean < 1e-3) & (W_prec > 100.0)))
 
     # --- Learning dynamics (vs previous snapshot) ---
     if prev_snapshot is None:
@@ -46,16 +45,15 @@ def compute_model_snapshot(agent, prev_snapshot=None):
         "p99_precision": p99_precision,
         "mean_variance": mean_variance,
         "fraction_high_confidence": fraction_high_confidence,
-
         "mean_abs_weight": mean_abs_weight,
         "p90_abs_weight": p90_abs_weight,
         "fraction_near_zero_mean": fraction_near_zero_mean,
         "fraction_confident_irrelevant": fraction_confident_irrelevant,
-
         "mean_abs_delta_mean": mean_abs_delta_mean,
         "mean_delta_precision": mean_delta_precision,
         "fraction_weights_updated": fraction_weights_updated,
     }
+
 
 def compute_top_interactions(agent, k=10):
     W_mean = agent.W_mean
@@ -95,12 +93,13 @@ def compute_top_interactions(agent, k=10):
         [unpack(i) for i in top_neg_idx],
     )
 
+
 def expected_abs_gaussian(mu: np.ndarray, sigma: np.ndarray) -> np.ndarray:
     """
     E[|X|] for X ~ N(mu, sigma^2), elementwise.
     """
     sigma = np.clip(sigma, 1e-8, None)
-    term1 = sigma * np.sqrt(2.0 / np.pi) * np.exp(-(mu ** 2) / (2.0 * sigma ** 2))
+    term1 = sigma * np.sqrt(2.0 / np.pi) * np.exp(-(mu**2) / (2.0 * sigma**2))
     term2 = np.abs(mu) * (1.0 - 2.0 * norm.cdf(-np.abs(mu) / sigma))
     return term1 + term2
 
@@ -127,17 +126,17 @@ def compute_top_user_components(
             certainty_j   = mean_i P(|W_ij| > eps)
             uncertainty_j = 1 - certainty_j  (remove impact component)
     """
-    W_mean = agent.W_mean              # (16, 130)
+    W_mean = agent.W_mean  # (16, 130)
     W_prec = agent.W_precision
     W_var = 1.0 / W_prec
     W_std = np.sqrt(W_var)
 
-    E_abs = expected_abs_gaussian(W_mean, W_std)          # (16, 130)
-    P_nonzero = prob_abs_gt_eps(W_mean, W_std, eps)       # (16, 130)
+    E_abs = expected_abs_gaussian(W_mean, W_std)  # (16, 130)
+    P_nonzero = prob_abs_gt_eps(W_mean, W_std, eps)  # (16, 130)
 
-    impact = E_abs.sum(axis=0)                            # (130,)
-    certainty = P_nonzero.mean(axis=0)                    # (130,)
-    uncertainty = 1.0 - certainty                         # (130,)
+    impact = E_abs.sum(axis=0)  # (130,)
+    certainty = P_nonzero.mean(axis=0)  # (130,)
+    uncertainty = 1.0 - certainty  # (130,)
 
     valid_mask = np.ones(W_mean.shape[1], dtype=bool)
     if exclude_prev_snippet:

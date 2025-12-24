@@ -49,5 +49,4 @@ class Settings(BaseSettings):
             self.data_bucket_dev = legacy_bucket
 
 
-
 settings = Settings()

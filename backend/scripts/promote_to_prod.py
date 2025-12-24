@@ -47,9 +47,7 @@ def _require_client(env: str, bucket: str):
             f"{env.capitalize()} MinIO endpoint {get_endpoint_for_env(env)} is unreachable. Start the {env} stack."
         ) from exc
     except ClientError as exc:
-        raise RuntimeError(
-            f"Unable to access {env} bucket {bucket}: {exc}"
-        ) from exc
+        raise RuntimeError(f"Unable to access {env} bucket {bucket}: {exc}") from exc
     return client
 
 
@@ -136,7 +134,9 @@ def backup_prod(prod_client) -> None:
             content_type=content_type,
             s3=prod_client,
         )
-        print(f"✅ Backed up s3://{PROD_BUCKET}/{key} → s3://{PROD_BUCKET}/{backup_key}")
+        print(
+            f"✅ Backed up s3://{PROD_BUCKET}/{key} → s3://{PROD_BUCKET}/{backup_key}"
+        )
         backed_up = True
 
     if not backed_up:
