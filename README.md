@@ -255,6 +255,22 @@ NerdType follows a **production-grade MLOps workflow** with explicit **dev / sta
 │   │   ├── README
 │   │   ├── script.py.mako
 │   │   └── versions
+│   │       ├── 3f036435bcee_add_processed_embedding_to_snippet.py
+│   │       ├── 5cbee9bf7b00_merge_heads.py
+│   │       ├── 7a2ea6d32ab5_initial_schema_rebuild.py
+│   │       ├── 15c3f8ba6dc1_add_username_and_hashed_password_to_.py
+│   │       ├── 44abdb04cca2_add_user_stats.py
+│   │       ├── 90b041a2c4e9_add_top_certain_uncertain_to_model_.py
+│   │       ├── 91d4c588b03b_add_agent_observability_models.py
+│   │       ├── 522fbdb2c09a_add_best_wpms_to_user_and_remove_.py
+│   │       ├── a7b8c9d0e1f2_merge_heads_model_snapshots_and_agent_obs.py
+│   │       ├── b49cf5793c8f_change_timestamp_to_biginteger_in_.py
+│   │       ├── cafe1234abcd_remove_legacy_interactions_from_model_snapshots.py
+│   │       ├── d03b63f3cd1f_refactor_user_stats_to_json_features.py
+│   │       ├── d25472802491_update_typing_session_schema.py
+│   │       ├── e1a4f3c2d7ab_add_weights_uri_to_model_snapshots.py
+│   │       ├── eb70214b29f3_add_anonymous_user_fields.py
+│   │       └── f2d3c4b1a9ce_create_model_snapshots_table.py
 │   ├── alembic.ini
 │   ├── app
 │   │   ├── __init__.py
@@ -333,13 +349,13 @@ NerdType follows a **production-grade MLOps workflow** with explicit **dev / sta
 │   │   ├── promote_to_prod.py
 │   │   ├── promote_to_stage.py
 │   │   └── seed_data.py
-│   ├── test_observability.py
 │   └── tests
 │       ├── conftest.py
 │       ├── test_api.py
 │       ├── test_health.py
 │       ├── test_lints_agent.py
 │       ├── test_metrics.py
+│       ├── test_observability_api.py
 │       └── test_user_features.py
 ├── dashboard_plan.md
 ├── docker-compose.dev.yml
